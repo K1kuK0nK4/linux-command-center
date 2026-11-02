@@ -13,7 +13,7 @@ without installing anything on a single server.
 
 ---
 
-## Why this exists
+## Why?
 
 The last few weeks have brought a constant stream of critical vulnerabilities — PHP2Shell, Java, Linux Kernel, Brotli decoder, OpenSSL… Every time, the same questions come up: **which servers run the
 affected package, in which version, and are they patched yet?**
