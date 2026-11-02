@@ -1,0 +1,32 @@
+name: linux-command-center
+
+services:
+  app:
+    build: .
+    image: linux-command-center:latest
+    container_name: linux-command-center
+    # Only reachable from your own computer (127.0.0.1), never from the network.
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - data:/data
+    environment:
+      # Default time zone (it can also be changed later in Settings → Appearance).
+      - TZ=Europe/Madrid
+    restart: unless-stopped
+    # Hardening: read-only filesystem (only /data and /tmp are writable), no Linux capabilities,
+    # no privilege escalation and resource limits.
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 768m
+
+volumes:
+  # Your inventory, encrypted credentials and settings live here, never in the project folder.
+  data:
+    name: linux-command-center-data

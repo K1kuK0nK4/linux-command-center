@@ -1,0 +1,5 @@
+.git/
+docs/
+**/__pycache__/
+*.md
+LICENSE

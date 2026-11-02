@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ejecución remota</h1>
+<div class="grid" style="grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.3fr)">
+  <div class="card">
+    <h2>1 · Elige los servidores <span class="muted small" id="sel-count"></span></h2>
+    <div class="filters">
+      <input id="vm-filter" placeholder="Filtrar por nombre, IP, cliente...">
+      {% from "_multi.html" import multi %}
+      {{ multi("client", "Todos los clientes", [("", "(sin cliente)")] + zip_pairs(clients), [], field=False) }}
+      {{ multi("environment", "Todos los entornos", [("", "(sin entorno)")] + zip_pairs(envs), [], field=False) }}
+      {{ multi("tag", "Todas las etiquetas", tag_options(tags), [], field=False) }}
+      <label class="inline"><input type="checkbox" data-check-all=".cmd-vm"> Todos los visibles</label>
+    </div>
+    <div class="vm-pick">
+      {% for v in vms %}
+      <label data-client="{{ v.client or '' }}" data-env="{{ v.environment or '' }}" data-tags=",{{ vm_tags.get(v.id, [])|map(attribute='id')|join(',') }},"><input type="checkbox" class="cmd-vm" value="{{ v.id }}" {{ 'checked' if v.id in preselect }}>
+        <span><b>{{ v.name }}</b> <span class="muted small mono">{{ v.host }}</span> <span class="muted small">{{ v.client or '' }} {{ v.environment or '' }}</span>
+          {% set need = auth_need(v) %}
+          {% if need %}<span class="badge b-info" title="Se te pedirá al ejecutar">{{ 'pide usuario' if need == 'user' else 'pide contraseña' }}</span>{% elif v.last_scan_status == 'error' %}<span class="badge b-bad">error</span>{% endif %}</span></label>
+      {% else %}<p class="muted" style="padding:10px">No hay servidores.</p>{% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <h2>2 · Comando</h2>
+    <label style="margin-top:0">Mis comandos guardados</label>
+    <select id="saved-pick">
+      <option value="">— Escribir uno nuevo —</option>
+      {% for s in saved %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+    </select>
+    <div class="hint" id="saved-desc"></div>
+    <label>Comando</label>
+    <textarea id="command" rows="5" placeholder="uname -a&#10;rpm -q {{ '{{paquete}}' }} || dpkg -l {{ '{{paquete}}' }}">{{ command }}</textarea>
+    <div class="hint">Usa <code>{{ '{{variable}}' }}</code> para partes que cambian en cada uso: al ejecutar te pedirá su valor.</div>
+    <div id="vars" class="row" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:10px">
+      <label class="inline"><input type="checkbox" id="sudo"> Ejecutar con <b>sudo</b></label>
+      <label class="inline">Tiempo máx. por servidor <input type="number" id="timeout" value="60" min="5" max="3600" style="width:80px"> s</label>
+    </div>
+    <div class="hint">Se ejecuta en paralelo en todos los servidores seleccionados. Ojo con comandos que modifican el sistema:
+      los servidores son de cliente. Todo queda registrado en Auditoría.</div>
+    <p style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" id="run">Ejecutar</button>
+      <button id="save-btn">Guardar en mi biblioteca</button>
+    </p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Mi biblioteca de comandos</h2>
+  <div class="filters"><input data-filter="#lib-table" placeholder="Buscar comando..."></div>
+  <div class="table-wrap" style="max-height:360px"><table id="lib-table">
+    <thead><tr><th>Nombre</th><th>Comando</th><th>sudo</th><th></th></tr></thead>
+    <tbody>{% for s in saved %}<tr>
+      <td><b>{{ s.name }}</b><div class="muted small">{{ s.description or '' }}</div></td>
+      <td class="mono small" style="max-width:520px;word-break:break-all">{{ s.command }}</td>
+      <td>{% if s.use_sudo %}<span class="badge b-warn">sudo</span>{% endif %}</td>
+      <td style="white-space:nowrap"><button onclick="loadSaved({{ s.id }}, true)">Usar / editar</button>
+        <button class="danger" onclick="deleteSaved({{ s.id }})">Eliminar</button></td>
+    </tr>{% else %}<tr><td colspan="4" class="muted">Aún no tienes comandos guardados.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<dialog id="save-dlg">
+  <form method="dialog" id="save-form" class="form" style="max-width:none">
+    <h2 id="save-title">Guardar comando</h2>
+    <label>Nombre</label><input name="cname" required maxlength="100" placeholder="p.ej. Versión de OpenSSH">
+    <label>Descripción <span class="muted">(opcional)</span></label><input name="cdesc" maxlength="300">
+    <label class="inline" style="margin-top:10px" id="save-as-new-box"><input type="checkbox" name="as_new"> Guardar como comando nuevo (no sobrescribir)</label>
+    <p style="display:flex;gap:8px;margin-bottom:0"><button class="primary" type="submit">Guardar</button>
+      <button type="button" onclick="document.getElementById('save-dlg').close()">Cancelar</button></p>
+  </form>
+</dialog>
+
+<div class="card">
+  <h2>Ejecuciones recientes</h2>
+  <table>
+    <thead><tr><th>#</th><th>Fecha</th><th>Comando</th><th>Servidores</th><th>Resultado</th></tr></thead>
+    <tbody>{% for j in recent %}<tr>
+      <td><a href="/jobs/{{ j.id }}">{{ j.id }}</a></td><td class="small">{{ j.created_at }}</td>
+      <td class="mono"><a href="/jobs/{{ j.id }}">{{ j.command|truncate(90) }}</a>{% if j.use_sudo %} <span class="badge b-warn">sudo</span>{% endif %}</td>
+      <td>{{ j.target_count }}</td>
+      <td>{% if j.ok %}<span class="badge b-ok">{{ j.ok }} ok</span>{% endif %}
+        {% if j.fail %}<span class="badge b-warn">{{ j.fail }} fallo</span>{% endif %}
+        {% if j.err %}<span class="badge b-bad">{{ j.err }} error</span>{% endif %}
+        {% if j.pend %}<span class="badge b-muted">{{ j.pend }} en curso</span>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="5" class="muted">Aún no has lanzado comandos.</td></tr>{% endfor %}</tbody>
+  </table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const filterInp = document.getElementById("vm-filter");
+  function applyFilter() {
+    const q = filterInp.value.toLowerCase();
+    const clients = multiValues("client"), envs = multiValues("environment"), tagIds = multiValues("tag");
+    document.querySelectorAll(".vm-pick label").forEach((l) => {
+      const ok = l.textContent.toLowerCase().includes(q)
+        && (!clients.length || clients.includes(l.dataset.client))
+        && (!envs.length || envs.includes(l.dataset.env))
+        && (!tagIds.length || tagIds.some((id) => l.dataset.tags.includes("," + id + ",")));
+      l.style.display = ok ? "" : "none";
+    });
+  }
+  filterInp.addEventListener("input", applyFilter);
+  document.addEventListener("multi-change", applyFilter);
+  function updateCount() { document.getElementById("sel-count").textContent = t("({n} seleccionados)", { n: selectedIds(".cmd-vm").length }); }
+  document.addEventListener("change", updateCount);
+  document.addEventListener("selection-changed", updateCount);
+  updateCount();
+  // ---------- biblioteca y variables {{nombre}} ----------
+  const SAVED = {{ saved|tojson }};
+  const cmdBox = document.getElementById("command"), varsBox = document.getElementById("vars");
+  const pick = document.getElementById("saved-pick"), desc = document.getElementById("saved-desc");
+  const VAR_RE = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
+  let loadedId = null;
+
+  function renderVars() {
+    const names = [...new Set([...cmdBox.value.matchAll(VAR_RE)].map((m) => m[1]))];
+    const old = Object.fromEntries([...varsBox.querySelectorAll("input")].map((i) => [i.name, i.value]));
+    varsBox.innerHTML = names.map((n) => `<div><label>${n}</label><input name="${n}" value="${(old[n] || "").replace(/"/g, "&quot;")}" required></div>`).join("");
+  }
+  function finalCommand() {
+    const vals = Object.fromEntries([...varsBox.querySelectorAll("input")].map((i) => [i.name, i.value]));
+    const missing = Object.keys(vals).filter((k) => !vals[k].trim());
+    if (missing.length) { alert(t("Rellena: {v}", { v: missing.join(", ") })); return null; }
+    return cmdBox.value.replace(VAR_RE, (_, n) => vals[n]).trim();
+  }
+  function loadSaved(id, scroll) {
+    const s = SAVED.find((x) => x.id === id);
+    loadedId = s ? s.id : null;
+    pick.value = s ? s.id : "";
+    desc.textContent = s ? (s.description || "") : "";
+    if (s) {
+      cmdBox.value = s.command;
+      document.getElementById("sudo").checked = !!s.use_sudo;
+      document.getElementById("timeout").value = s.timeout_s;
+    }
+    renderVars();
+    if (scroll) cmdBox.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  pick.addEventListener("change", () => loadSaved(parseInt(pick.value) || null));
+  cmdBox.addEventListener("input", renderVars);
+  renderVars();
+  {% if saved_id %}loadSaved({{ saved_id|int }});{% endif %}
+
+  const saveDlg = document.getElementById("save-dlg"), saveForm = document.getElementById("save-form");
+  document.getElementById("save-btn").addEventListener("click", () => {
+    if (!cmdBox.value.trim()) { alert(t("Escribe primero el comando.")); return; }
+    const s = SAVED.find((x) => x.id === loadedId);
+    document.getElementById("save-title").textContent = s ? t("Actualizar \"{n}\"", { n: s.name }) : t("Guardar comando");
+    saveForm.elements.cname.value = s ? s.name : "";
+    saveForm.elements.cdesc.value = s ? s.description || "" : "";
+    saveForm.elements.as_new.checked = false;
+    document.getElementById("save-as-new-box").hidden = !s;
+    saveDlg.showModal();
+  });
+  saveForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const r = await api("/api/saved-commands", {
+      id: saveForm.elements.as_new.checked ? null : loadedId,
+      name: saveForm.elements.cname.value, description: saveForm.elements.cdesc.value, command: cmdBox.value,
+      sudo: document.getElementById("sudo").checked, timeout: parseInt(document.getElementById("timeout").value),
+    });
+    if (r.id) location.href = "/commands?saved=" + r.id; else alert(t(r.error || "Error"));
+  });
+  async function deleteSaved(id) {
+    const s = SAVED.find((x) => x.id === id);
+    if (!confirm(t("¿Eliminar \"{n}\" de tu biblioteca?", { n: s.name }))) return;
+    await api(`/api/saved-commands/${id}/delete`, {});
+    location.href = "/commands";
+  }
+
+  document.getElementById("run").addEventListener("click", async () => {
+    const ids = selectedIds(".cmd-vm");
+    if (!ids.length || !cmdBox.value.trim()) { alert(t("Selecciona al menos un servidor y escribe un comando.")); return; }
+    const command = finalCommand();
+    if (command === null) return;
+    const sudo = document.getElementById("sudo").checked;
+    if (!confirm(t(sudo ? "Vas a ejecutar CON SUDO en {n} servidor(es):\n\n{c}\n\n¿Continuar?" : "Vas a ejecutar en {n} servidor(es):\n\n{c}\n\n¿Continuar?", { n: ids.length, c: command }))) return;
+    const r = await apiWithAuth("/api/jobs", { ids, command, sudo, timeout: parseInt(document.getElementById("timeout").value) });
+    if (!r) return;
+    if (r.job_id) location.href = "/jobs/" + r.job_id; else alert(t(r.error || "Error"));
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+{# "v" son los valores a mostrar: los del servidor o los que el usuario acaba de enviar si hubo un error #}
+{% set v = draft or vm %}
+<h1>{{ 'Editar ' ~ vm.name if vm else 'Nuevo servidor' }}</h1>
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+<div class="card form">
+<form method="post" autocomplete="off">
+  <div class="row">
+    <div><label>Nombre *</label><input name="name" required value="{{ v.name if v else '' }}" placeholder="web01-pro"></div>
+    <div><label>IP o hostname *</label><input name="host" required value="{{ v.host if v else '' }}" placeholder="10.20.30.40"></div>
+    <div style="max-width:110px"><label>Puerto SSH</label><input name="port" type="number" value="{{ v.port if v else 22 }}"></div>
+  </div>
+  <label>Conectar a través de (bastión) <span class="muted">(opcional)</span></label>
+  <select name="jump_vm_id">
+    <option value="">Conexión directa</option>
+    {% for j in jumps %}<option value="{{ j.id }}" {{ 'selected' if vm and vm.jump_vm_id == j.id }}>{{ j.name }} · {{ j.host }}{% if j.client %} · {{ j.client }}{% endif %}</option>{% endfor %}
+  </select>
+  <div class="hint">Si a este servidor solo se llega pasando por otro (jump host, como <code>ssh -J</code>), elige ese
+    servidor. Debe estar dado de alta en el inventario con sus credenciales guardadas. El bastión solo reenvía la
+    conexión: no se ejecuta nada en él.</div>
+  <div class="row">
+    {% for field, label, options in [('client', 'Cliente', clients), ('environment', 'Entorno', envs)] %}
+    {% set current = v[field] if v and v[field] else '' %}
+    <div><label>{{ label }}</label>
+      <select name="{{ field }}" data-creatable>
+        <option value="">— Sin {{ label|lower }} —</option>
+        {% for o in options %}<option {{ 'selected' if current == o }}>{{ o }}</option>{% endfor %}
+        <option value="__new__">＋ Crear nuevo…</option>
+      </select>
+      <input name="{{ field }}_new" placeholder="Nombre del nuevo {{ label|lower }}" hidden style="margin-top:6px" maxlength="60">
+    </div>
+    {% endfor %}
+  </div>
+  <div class="hint">Los clientes, entornos y etiquetas se renombran o borran en <a href="/tags" target="_blank">Clientes y etiquetas</a>.</div>
+
+  <label>Credencial SSH</label>
+  {# Por defecto (servidor nuevo) no se guarda nada: es lo más seguro #}
+  {% set mode = 'own' if own else ('shared' if vm and vm.credential_id else 'ask') %}
+  <div class="seg">
+    <label><input type="radio" name="cred_mode" value="ask" {{ 'checked' if mode == 'ask' }}> No guardar nada: preguntar al conectar (recomendado)</label>
+    <label><input type="radio" name="cred_mode" value="own" {{ 'checked' if mode == 'own' }}> Usuario propio de este servidor</label>
+    <label><input type="radio" name="cred_mode" value="shared" {{ 'checked' if mode == 'shared' }}> Usar una credencial compartida</label>
+  </div>
+
+  <div id="cred-ask" style="margin-top:8px" class="hint">No se guarda ni usuario ni contraseña. Al escanear, ejecutar un comando
+    o abrir la terminal se te pedirán (una sola vez para todas los servidores que lo necesiten).</div>
+
+  <div id="cred-shared" style="margin-top:8px">
+    <select name="credential_id">
+      <option value="">— Sin credencial —</option>
+      {% for c in creds %}<option value="{{ c.id }}" {{ 'selected' if vm and vm.credential_id == c.id }}>{{ c.name }} ({{ c.username }})</option>{% endfor %}
+    </select>
+    <div class="hint">Para usuarios que se repiten en muchos servidores. <a href="/credentials/new" target="_blank">Crear credencial compartida</a> (recarga después).</div>
+  </div>
+
+  <div id="cred-own" style="margin-top:8px">
+    <div class="row">
+      <div><label>Usuario</label><input name="own_username" value="{{ own.username if own else '' }}" placeholder="usuario_ssh"></div>
+      <div><label>Contraseña</label><input type="password" name="own_password" autocomplete="new-password"
+        placeholder="{{ '•••••••• (vacío = no cambiar)' if own and own.password_enc else 'vacío = preguntar al conectar' }}"></div>
+      <div><label>Contraseña sudo</label><input type="password" name="own_sudo_password" autocomplete="new-password"
+        placeholder="{{ '•••••••• (guardada)' if own and own.sudo_password_enc else 'vacío = la misma' }}"></div>
+    </div>
+    {% if own and own.password_enc %}
+    <label class="inline" style="margin-top:6px"><input type="checkbox" name="own_forget_password" value="1">
+      Olvidar la contraseña guardada (guardar solo el usuario y preguntar la contraseña al conectar)</label>
+    {% endif %}
+    <div class="hint">Se guarda cifrada y solo la usa este servidor. Si dejas la contraseña vacía, se guarda solo el usuario
+      y la contraseña se te pedirá al conectar.</div>
+  </div>
+
+  <label>Etiquetas</label>
+  {% if tags %}
+  <div class="tag-pick">
+    {% for t in tags %}<label><input type="checkbox" name="tag_ids" value="{{ t.id }}" {{ 'checked' if t.id in vm_tag_ids }}>
+      <span class="tag" style="--tag: {{ t.color or '#898781' }}; border:0; background:none; padding:0">{{ t.name }}</span></label>{% endfor %}
+  </div>
+  {% endif %}
+  <input name="new_tags" placeholder="Nuevas etiquetas separadas por comas: web, dmz, expuesta-internet" style="margin-top:8px">
+
+  <label>Notas</label><textarea name="notes" rows="3" style="font-family:inherit">{{ v.notes if v and v.notes else '' }}</textarea>
+  <p><button class="primary" type="submit">Guardar</button> <a href="{{ '/vms/' ~ vm.id if vm else '/vms' }}">Cancelar</a></p>
+</form>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const modes = document.querySelectorAll("input[name=cred_mode]");
+  const sync = () => {
+    const mode = document.querySelector("input[name=cred_mode]:checked").value;
+    document.getElementById("cred-own").hidden = mode !== "own";
+    document.getElementById("cred-shared").hidden = mode !== "shared";
+    document.getElementById("cred-ask").hidden = mode !== "ask";
+  };
+  modes.forEach((m) => m.addEventListener("change", sync));
+  sync();
+</script>
+{% endblock %}

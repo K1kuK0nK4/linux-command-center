@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Inventario · Linux Command Center{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Inventario <span class="muted">({{ vms|length }} servidores)</span></h1>
+  <span id="scan-status" class="muted"></span>
+  <a class="btn" href="/vms/import">Importar / Exportar</a>
+  <a class="btn" href="/vms/export.csv?{{ request.url.query }}" title="Informe con SO, kernel, paquetes, estado... de los servidores filtrados">Informe CSV</a>
+  <a class="btn primary" href="/vms/new">+ Nuevo servidor</a>
+</div>
+
+{% if pending_hostkeys %}<div class="alert warn">{{ pending_hostkeys }} servidores con huella SSH pendiente de confirmar.
+  <a href="/hostkeys">Revisar y aceptar →</a></div>{% endif %}
+<form class="filters" method="get">
+  <input name="q" value="{{ p.q or '' }}" placeholder="Buscar nombre, IP, SO, kernel, etiqueta...">
+  {% from "_multi.html" import multi %}
+  {{ multi("client", "Todos los clientes", [("__none__", "(sin cliente)")] + zip_pairs(clients), p.client) }}
+  {{ multi("environment", "Todos los entornos", [("__none__", "(sin entorno)")] + zip_pairs(envs), p.environment) }}
+  {{ multi("tag", "Todas las etiquetas", tag_options(tags), p.tag) }}
+  {{ multi("os_family", "Todas las familias", family_options(), p.os_family) }}
+  {{ multi("os_name", "Todas las distribuciones", distro_options(), p.os_name) }}
+  <select name="status"><option value="">Cualquier estado</option>
+    <option value="ok" {{ 'selected' if p.status == 'ok' }}>Escaneo correcto</option>
+    <option value="error" {{ 'selected' if p.status == 'error' }}>Escaneo con error</option>
+    <option value="never" {{ 'selected' if p.status == 'never' }}>Nunca escaneado</option></select>
+  <select name="containers"><option value="">Con y sin contenedores</option>
+    <option value="yes" {{ 'selected' if p.containers == 'yes' }}>Con Docker/Podman</option>
+    <option value="no" {{ 'selected' if p.containers == 'no' }}>Sin Docker/Podman</option></select>
+  <label class="inline"><input type="checkbox" name="reboot" value="1" {{ 'checked' if p.reboot }}> Requiere reinicio</label>
+  <button type="submit">Filtrar</button>
+  {% if request.url.query %}<a href="/vms">Quitar filtros</a>{% endif %}
+</form>
+
+<div class="filters">
+  <button onclick="startScan({ids: selectedIds('.vm-check')})">Escanear seleccionados</button>
+  <a href="/scan-info" class="small" title="Qué comandos ejecuta el escaneo">¿Qué hace?</a>
+  {% if p.client %}<button class="primary" onclick='startScan({client: {{ p.client|tojson }}})'>Escanear todos los de {{ p.client|join(", ")|replace("__none__", "(sin cliente)") }}</button>{% endif %}
+  <button onclick="const ids=selectedIds('.vm-check'); if(ids.length) location.href='/commands?ids='+ids.join(','); else alert(t('Selecciona algún servidor'))">Ejecutar en seleccionados</button>
+  <span class="muted" style="margin-left:12px">Etiqueta:</span>
+  <input id="bulk-tag" list="tag-list" placeholder="nombre de etiqueta" style="width:170px">
+  <datalist id="tag-list">{% for t in tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+  <button onclick="bulkTag('add')">+ Añadir</button>
+  <button onclick="bulkTag('remove')">− Quitar</button>
+</div>
+
+<div class="table-wrap">
+<table id="vm-table">
+  {% set cols = prefs().vm_columns %}
+  <thead><tr>
+    <th><input type="checkbox" data-check-all=".vm-check" title="Seleccionar todos"></th>
+    <th class="sortable">Nombre</th>
+    {% for c in cols %}<th class="{{ 'sortable' if c != 'status' }}">{{ VM_COLUMNS[c] }}</th>{% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for v in vms %}
+    <tr>
+      <td><input type="checkbox" class="vm-check" value="{{ v.id }}"></td>
+      <td><a href="/vms/{{ v.id }}"><b>{{ v.name }}</b></a>{% if v.container_count is not none and 'containers' not in cols %}
+        <span class="badge" title="Docker/Podman: {{ v.container_count }} contenedores">{{ v.container_count }} cont.</span>{% endif %}<div class="muted small mono">{{ v.host }}{% if v.port != 22 %}:{{ v.port }}{% endif %}</div>
+        {% for t in vm_tags.get(v.id, []) %}<a class="tag" style="--tag: {{ t.color or '#898781' }}" href="/vms?tag={{ t.id }}">{{ t.name }}</a>{% endfor %}</td>
+      {% for c in cols %}
+        {% if c == 'client' %}
+      <td>{{ v.client or '' }}{% if v.environment and 'environment' not in cols %}<div class="muted small">{{ v.environment }}</div>{% endif %}</td>
+        {% elif c == 'environment' %}<td>{{ v.environment or '' }}</td>
+        {% elif c == 'os' %}<td>{{ v.os_name or '—' }} {{ v.os_version or '' }}</td>
+        {% elif c == 'kernel' %}
+      <td class="mono">{{ v.kernel or '—' }}{% if v.reboot_required and 'reboot' not in cols %} <span class="badge b-warn" title="Requiere reinicio">reinicio</span>{% endif %}</td>
+        {% elif c == 'pkgs' %}<td data-sort="{{ v.pkg_count or 0 }}">{{ v.pkg_count or '—' }}</td>
+        {% elif c == 'pending' %}
+      <td data-sort="{{ v.pending_updates if v.pending_updates is not none else -1 }}">
+        {% if v.pending_updates is none %}<span class="muted">—</span>
+        {% else %}{{ v.pending_updates }}{% if v.pending_security %} <span class="badge b-bad">{{ v.pending_security }} seg.</span>{% endif %}{% endif %}
+      </td>
+        {% elif c == 'last_update' %}
+      <td data-sort="{{ v.last_pkg_update or '' }}" class="{{ 'bad' if (v.last_pkg_update|days_since or 0) > 30 }}">
+        {{ v.last_pkg_update|ago if v.last_pkg_update else '—' }}</td>
+        {% elif c == 'last_check' %}<td data-sort="{{ v.last_ok_at or '' }}">{{ v.last_ok_at|ago }}</td>
+        {% elif c == 'containers' %}
+      <td data-sort="{{ v.container_count if v.container_count is not none else -1 }}">{% if v.container_count is none %}<span class="muted">—</span>
+        {% else %}<a href="/vms/{{ v.id }}#containers">{{ v.container_count }}</a>{% endif %}
+        {% if v.containers_error %}<span class="badge b-warn" title="{{ v.containers_error }}">error</span>{% endif %}</td>
+        {% elif c == 'hostname' %}<td class="mono">{{ v.hostname or '—' }}</td>
+        {% elif c == 'arch' %}<td>{{ v.arch or '—' }}</td>
+        {% elif c == 'uptime' %}<td data-sort="{{ v.uptime_s or 0 }}">{{ v.uptime_s|uptime }}</td>
+        {% elif c == 'reboot' %}<td>{% if v.reboot_required %}<span class="badge b-warn">sí</span>{% elif v.last_ok_at %}<span class="muted">no</span>{% else %}—{% endif %}</td>
+        {% elif c == 'credential' %}<td class="small">{% if v.cred_name and v.cred_name.startswith('__vm') %}propia{% else %}{{ v.cred_name or '—' }}{% endif %}</td>
+        {% elif c == 'status' %}
+      <td data-scan-vm="{{ v.id }}">
+        {% if v.id in running %}<span class="spin"></span> escaneando
+        {% elif v.last_scan_status == 'ok' %}<span class="badge st b-ok">Correcto</span>
+        {% elif v.last_scan_status == 'error' %}<span class="badge st b-bad" title="{{ v.last_scan_error }}">Error</span>
+        {% else %}<span class="badge st b-muted">Sin escanear</span>{% endif %}
+        {% set need = auth_need(v) %}
+        {% if need %}<div class="small" title="Se te pedirá al conectar">{{ 'pide usuario' if need == 'user' else 'pide contraseña' }}</div>{% endif %}
+      </td>
+        {% endif %}
+      {% endfor %}
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ cols|length + 2 }}" class="muted">No hay servidores. <a href="/vms/new">Crea una</a> o <a href="/vms/import">importa un CSV</a>.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  async function bulkTag(action) {
+    const ids = selectedIds(".vm-check"), name = document.getElementById("bulk-tag").value.trim();
+    if (!ids.length || !name) { alert(t("Selecciona servidores y escribe el nombre de la etiqueta.")); return; }
+    const r = await api("/api/vms/tags", { ids, name, action });
+    if (r.ok) location.reload(); else alert(t(r.error));
+  }
+</script>
+{% endblock %}

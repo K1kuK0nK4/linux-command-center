@@ -1,0 +1,16 @@
+{# Desplegable de selección múltiple con casillas. options = [(valor, texto)], selected = lista de valores.
+   Con field=False no envía nada en el formulario (lo usa JavaScript para filtrar en la propia página). #}
+{% macro multi(name, all_label, options, selected, field=True) %}
+{% set chosen = [] %}
+{% for value, label in options %}{% if value|string in selected|map('string')|list %}{% set _ = chosen.append(label) %}{% endif %}{% endfor %}
+<details class="multi" data-multi="{{ name }}" data-all="{{ all_label }}">
+  <summary>{% if not chosen %}{{ all_label }}{% elif chosen|length <= 2 %}{{ chosen|join(', ') }}{% else %}{{ chosen|length }} seleccionados{% endif %}</summary>
+  <div class="multi-list">
+    {% if options|length > 8 %}<input class="multi-search" placeholder="Buscar...">{% endif %}
+    {% for value, label in options %}
+    <label><input type="checkbox" {% if field %}name="{{ name }}"{% endif %} value="{{ value }}" data-label="{{ label }}"
+      {{ 'checked' if value|string in selected|map('string')|list }}> {{ label }}</label>
+    {% else %}<span class="muted small">—</span>{% endfor %}
+  </div>
+</details>
+{% endmacro %}

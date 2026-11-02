@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="{{ get_lang() }}">
+<head>
+  <meta charset="utf-8">
+  <title>{{ '# ' if become else '$ ' }}{{ vm.name }}</title>
+  <link rel="stylesheet" href="/static/lib/xterm.css">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0d1016; color: #c9d1e3; font: 13px system-ui, sans-serif; }
+    a { color: #8fb4ff; }
+    .bar { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: #1b2233; height: 22px; }
+    .bar b { color: #fff; } .bar .root { color: #f07163; font-weight: 700; }
+    .bar .safe { color: #4cc380; font-size: 12px; }
+    .bar button { background: #2a3245; color: #e3e7ef; border: 1px solid #3a4459; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
+    .bar button.on { background: #5b8ff0; border-color: #5b8ff0; color: #fff; }
+    .wrap { position: absolute; top: 34px; left: 0; right: 0; bottom: 0; display: flex; }
+    #term { flex: 1; min-width: 0; padding: 4px; }
+    #files { width: 380px; border-left: 1px solid #2d3443; background: #12151c; display: flex; flex-direction: column; }
+    #files[hidden] { display: none; }
+    #files .tools { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #2d3443; flex-wrap: wrap; }
+    #files .tools button, #files .row button { background: #2a3245; color: #e3e7ef; border: 1px solid #3a4459; border-radius: 6px; padding: 3px 8px; cursor: pointer; font: inherit; font-size: 12px; }
+    #files .path { padding: 6px 8px; font-family: Consolas, monospace; font-size: 12px; word-break: break-all; color: #8d96a9; border-bottom: 1px solid #2d3443; }
+    #files .path a { cursor: pointer; }
+    #files .list { flex: 1; overflow: auto; }
+    #files .row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #1f2430; font-size: 12.5px; }
+    #files .row:hover { background: #1a1f29; }
+    #files .row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    #files .row .meta { color: #8d96a9; font-size: 11.5px; white-space: nowrap; }
+    #files .row .kind { width: 26px; flex-shrink: 0; color: #8d96a9; font: 10px Consolas, monospace; }
+    #files .msg { padding: 8px; font-size: 12px; }
+    #files .msg.bad { color: #f07163; } #files .msg.ok { color: #4cc380; }
+    #files.drop { outline: 2px dashed #5b8ff0; outline-offset: -6px; }
+    #files .hint { color: #8d96a9; font-size: 11.5px; padding: 6px 8px; border-top: 1px solid #2d3443; }
+    #auth { position: absolute; inset: 34px 0 0 0; display: flex; align-items: center; justify-content: center; z-index: 5; background: #0d1016; }
+    #auth form { background: #1a1f29; border: 1px solid #2d3443; border-radius: 10px; padding: 22px; width: min(380px, 90vw); }
+    #auth h2 { margin: 0 0 6px; font-size: 16px; color: #fff; }
+    #auth label { display: block; margin: 10px 0 4px; font-weight: 600; }
+    #auth input:not([type=checkbox]) { width: 100%; box-sizing: border-box; padding: 7px 9px; border-radius: 6px; border: 1px solid #2d3443; background: #12151c; color: #e3e7ef; font: inherit; }
+    #auth .inline { display: flex; gap: 6px; align-items: center; font-weight: normal; }
+    #auth button { margin-top: 14px; padding: 7px 14px; border-radius: 6px; border: 1px solid #5b8ff0; background: #5b8ff0; color: #fff; font: inherit; cursor: pointer; }
+    #auth .muted, #mp-dlg .muted { color: #8d96a9; font-size: 12.5px; }
+    #mp-dlg { background: #1a1f29; color: #c9d1e3; border: 1px solid #2d3443; border-radius: 10px; padding: 22px; width: min(380px, 90vw); }
+    #mp-dlg::backdrop { background: rgba(0, 0, 0, .6); }
+    #mp-dlg h2 { margin: 0 0 6px; font-size: 16px; color: #fff; }
+    #mp-dlg input { display: block; width: 100%; box-sizing: border-box; margin: 12px 0; padding: 7px 9px; border-radius: 6px; border: 1px solid #2d3443; background: #12151c; color: #e3e7ef; font: inherit; }
+    #mp-dlg button { padding: 7px 14px; border-radius: 6px; border: 1px solid #5b8ff0; background: #5b8ff0; color: #fff; font: inherit; cursor: pointer; }
+    #mp-dlg button.sec { background: #2a3245; border-color: #3a4459; }
+  </style>
+</head>
+<body>
+<div class="bar">
+  <b>{{ vm.name }}</b> <span>{{ vm.host }}</span>
+  {% if become %}<span class="root">sudo su - {{ become }}</span>{% endif %}
+  {% if safe %}<span class="safe" title="{{ _('Pide confirmación antes de reiniciar, apagar o comandos peligrosos') }}">{{ _('Modo seguro') }}</span>{% endif %}
+  <span style="margin-left:auto;color:#8d96a9">{{ _('Copiar: seleccionar · Pegar: Ctrl+Shift+V / clic derecho') }}</span>
+  <button id="files-btn" disabled title="{{ _('Ficheros del servidor (SFTP)') }}">{{ _('Ficheros') }}</button>
+</div>
+<div class="wrap">
+  <div id="term"></div>
+  <div id="files" hidden>
+    <div class="tools">
+      <button id="f-home" title="{{ _('Carpeta personal') }}">{{ _('Inicio') }}</button>
+      <button id="f-up" title="{{ _('Subir un nivel') }}">{{ _('Arriba') }}</button>
+      <button id="f-refresh" title="{{ _('Actualizar') }}">{{ _('Actualizar') }}</button>
+      <button id="f-mkdir">＋ {{ _('Carpeta') }}</button>
+      <button id="f-upload">{{ _('Subir ficheros') }}</button>
+      <input type="file" id="f-input" multiple hidden>
+    </div>
+    <div class="path" id="f-path"></div>
+    <div class="list" id="f-list"></div>
+    <div class="msg" id="f-msg"></div>
+    <div class="hint">{{ _('Arrastra ficheros aquí para subirlos. Se usa el usuario con el que entraste por SSH (no el de sudo su).') }}
+      {% if safe %}{{ _('Modo seguro: no se puede borrar ni sobrescribir.') }}{% endif %}</div>
+  </div>
+</div>
+{% if need or stepup %}
+<div id="auth">
+  <form id="auth-form" autocomplete="off">
+    {% if stepup %}
+    <h2>{% if become %}{{ _('Terminal como') }} {{ become }}{% else %}{{ _('Terminal') }}{% endif %}</h2>
+    <div class="muted">{{ _('Confirma tu contraseña maestra (no te la volveremos a pedir en 5 minutos).') }}</div>
+    <label>{{ _('Contraseña maestra') }}</label><input type="password" name="master_password" required autofocus>
+    {% endif %}
+    {% if need %}
+    <h2 {% if stepup %}style="margin-top:16px"{% endif %}>{{ _('Credenciales necesarias') }}</h2>
+    <div class="muted">{{ _('Este servidor no las tiene guardadas.') }}</div>
+    {% if need == 'user' %}<label>{{ _('Usuario') }}</label><input name="username" required {{ 'autofocus' if not stepup }}>{% endif %}
+    <label>{{ _('Contraseña') }}</label><input type="password" name="password" required {{ 'autofocus' if need != 'user' and not stepup }}>
+    {% if become %}<label>{{ _('Contraseña sudo') }} <span class="muted">({{ _('opcional') }})</span></label><input type="password" name="sudo_password">{% endif %}
+    <label class="inline"><input type="checkbox" name="remember" value="1"> {{ _('Recordar hasta que bloquee la aplicación') }}</label>
+    {% endif %}
+    <button type="submit">{{ _('Conectar') }}</button>
+  </form>
+</div>
+{% endif %}
+<dialog id="mp-dlg">
+  <form id="mp-form" method="dialog" autocomplete="off">
+    <h2>{{ _('Contraseña maestra') }}</h2>
+    <div class="muted">{{ _('Confirma tu contraseña maestra para modificar ficheros (no te la volveremos a pedir en 5 minutos).') }}</div>
+    <input type="password" name="password" required>
+    <button type="submit">{{ _('Confirmar') }}</button> <button type="button" id="mp-cancel" class="sec">{{ _('Cancelar') }}</button>
+  </form>
+</dialog>
+<script src="/static/lib/xterm.js"></script>
+<script src="/static/lib/addon-fit.js"></script>
+<script>
+  window.I18N = {{ js_i18n()|tojson }};
+  const t = (s, vars) => { let r = (window.I18N || {})[s] ?? s; for (const [k, v] of Object.entries(vars || {})) r = r.split(`{${k}}`).join(v); return r; };
+  const SAFE = {{ 'true' if safe else 'false' }};
+  const RULES = {{ safe_rules|tojson }}.map((r) => ({ re: new RegExp(r.re, "i"), desc: r.desc }));
+
+  const term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 10000,
+    fontFamily: '"Cascadia Code", Consolas, monospace', theme: { background: "#0d1016" } });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById("term"));
+  fit.fit();
+  let ws = null, sid = null;
+  const send = (m) => ws && ws.readyState === 1 && ws.send(JSON.stringify(m));
+  const resize = () => { fit.fit(); send({ t: "r", c: term.cols, r: term.rows }); };
+
+  function connect(auth) {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    ws = new WebSocket(`${proto}://${location.host}/ws/terminal/{{ vm.id }}{{ '?become=' ~ (become|urlencode) if become }}`);
+    ws.binaryType = "arraybuffer";
+    // Si hacen falta credenciales, el primer mensaje que recibe el servidor es "auth"
+    ws.onopen = () => { if (auth) ws.send(JSON.stringify({ t: "auth", ...auth })); resize(); term.focus(); };
+    ws.onmessage = (e) => {
+      if (typeof e.data === "string") {          // mensajes de control
+        const m = JSON.parse(e.data);
+        if (m.t === "session") { sid = m.sid; document.getElementById("files-btn").disabled = false; }
+        return;
+      }
+      term.write(new Uint8Array(e.data));
+    };
+    ws.onclose = (e) => {
+      sid = null;
+      document.getElementById("files-btn").disabled = true;
+      term.write(e.code === 4401 ? "\r\n\x1b[31m{{ _('Sesión caducada: vuelve a entrar en la aplicación.') }}\x1b[0m\r\n" : "");
+    };
+  }
+
+  const authForm = document.getElementById("auth-form");
+  if (authForm) {
+    authForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const f = authForm.elements;
+      const auth = { username: f.username ? f.username.value.trim() : "", password: f.password ? f.password.value : "",
+                     sudo_password: f.sudo_password ? f.sudo_password.value : "", remember: f.remember ? f.remember.checked : false,
+                     master_password: f.master_password ? f.master_password.value : "" };
+      document.getElementById("auth").remove();
+      connect(auth);
+    });
+  } else {
+    connect(null);
+  }
+
+  // ---------- modo seguro: revisar la línea antes de pulsar Intro ----------
+  function currentLine() {
+    // Lo que se ve en pantalla en la línea del cursor (incluye lo recuperado del historial o autocompletado)
+    const b = term.buffer.active;
+    let y = b.baseY + b.cursorY, text = b.getLine(y)?.translateToString(true) || "";
+    while (y > 0 && b.getLine(y)?.isWrapped) { y--; text = (b.getLine(y)?.translateToString(true) || "") + text; }
+    return text.replace(/^.*?[$#>]\s/, "");   // quita el prompt (usuario@host:~$ )
+  }
+  function dangers(text) { return RULES.filter((r) => r.re.test(text)).map((r) => t(r.desc)); }
+
+  term.onData((d) => {
+    if (SAFE && /[\r\n]/.test(d)) {
+      const line = d.length > 1 ? d : currentLine();   // texto pegado o la línea escrita
+      const found = dangers(line);
+      if (found.length) {
+        const ok = prompt(t("MODO SEGURO: este comando puede afectar al servidor:") + "\n\n• " + found.join("\n• ") +
+          "\n\n" + line.trim() + "\n\n" + t("Si de verdad quieres ejecutarlo, escribe {w}:", { w: "CONFIRMO" })) === "CONFIRMO";
+        if (!ok) { send({ t: "i", d: "\x03" }); term.focus(); return; }   // Ctrl+C: descarta la línea
+        send({ t: "danger", line: line.trim() });
+      }
+    }
+    send({ t: "i", d });
+  });
+  window.addEventListener("resize", resize);
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type === "keydown" && e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "v") {
+      navigator.clipboard.readText().then((txt) => term.paste(txt)); return false;
+    }
+    return true;
+  });
+  document.getElementById("term").addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    if (term.hasSelection()) { navigator.clipboard.writeText(term.getSelection()); term.clearSelection(); }
+    else navigator.clipboard.readText().then((txt) => term.paste(txt));
+  });
+  if (!authForm) term.focus();
+
+  // ---------- panel de ficheros (SFTP) ----------
+  const panel = document.getElementById("files"), list = document.getElementById("f-list");
+  const msg = document.getElementById("f-msg"), pathBox = document.getElementById("f-path");
+  let cwd = "", parent = null;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const size = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(1) + " MB" : (n / 1073741824).toFixed(1) + " GB";
+  const when = (ts) => ts ? new Date(ts * 1000).toLocaleString() : "";
+  const join = (a, b) => (a.endsWith("/") ? a : a + "/") + b;
+  const say = (text, cls) => { msg.textContent = text || ""; msg.className = "msg " + (cls || ""); };
+
+  async function api(url, opts) {
+    const r = await fetch(url, opts);
+    if (r.status === 401) { say(t("Sesión caducada: vuelve a entrar en la aplicación."), "bad"); throw new Error("401"); }
+    const data = await r.json();
+    // Subir, crear o borrar ficheros pide la contraseña maestra (válida 5 minutos) y repite la petición
+    if (data.stepup) return (await askStepup()) ? api(url, opts) : { error: "Cancelado", done: [] };
+    return data;
+  }
+
+  function askStepup() {
+    const dlg = document.getElementById("mp-dlg"), form = document.getElementById("mp-form");
+    form.reset();
+    dlg.showModal();
+    return new Promise((resolve) => {
+      const done = async (pw) => {
+        form.onsubmit = document.getElementById("mp-cancel").onclick = null;
+        dlg.close();
+        if (!pw) return resolve(false);
+        const r = await fetch("/api/stepup", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ password: pw, what: "subir o cambiar ficheros" }) });
+        if (!r.ok) { say(t("Contraseña maestra incorrecta"), "bad"); return resolve(false); }
+        resolve(true);
+      };
+      form.onsubmit = (e) => { e.preventDefault(); done(form.elements.password.value); };
+      document.getElementById("mp-cancel").onclick = () => done(null);
+    });
+  }
+
+  async function load(path) {
+    if (!sid) return;
+    const r = await api(`/api/files/${sid}/list?path=${encodeURIComponent(path || "")}`);
+    if (r.error) { say(t(r.error), "bad"); return; }
+    cwd = r.path; parent = r.parent;
+    const parts = cwd.split("/").filter(Boolean);
+    pathBox.innerHTML = `<a data-p="/">/</a>` + parts.map((p, i) => `<a data-p="/${parts.slice(0, i + 1).map(encodeURIComponent).join("/")}">${esc(p)}</a>`).join("/");
+    pathBox.querySelectorAll("a").forEach((a) => a.onclick = () => load(decodeURIComponent(a.dataset.p)));
+    list.innerHTML = r.entries.map((e) => `<div class="row" data-name="${esc(e.name)}" data-dir="${e.dir ? 1 : 0}">
+        <span class="kind">${e.dir ? "DIR" : e.link ? "LNK" : ""}</span>
+        <span class="nm" title="${esc(e.name)}">${esc(e.name)}</span>
+        <span class="meta" title="${esc(e.perms)} · ${when(e.mtime)}">${e.dir ? "" : size(e.size)}</span>
+        ${SAFE ? "" : `<button class="del">${t("Borrar")}</button>`}</div>`).join("") ||
+      `<div class="msg">${t("Carpeta vacía")}</div>`;
+    list.querySelectorAll(".row").forEach((row) => {
+      const name = row.dataset.name, full = join(cwd, name);
+      row.querySelector(".nm").onclick = () => {
+        if (row.dataset.dir === "1") load(full);
+        else location.href = `/api/files/${sid}/download?path=${encodeURIComponent(full)}`;
+      };
+      const del = row.querySelector(".del");
+      if (del) del.onclick = async () => {
+        if (!confirm(t("¿Borrar {n} del servidor? No se puede deshacer.", { n: full }))) return;
+        const res = await api(`/api/files/${sid}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: full }) });
+        say(res.error ? t(res.error) : t("Borrado: {n}", { n: name }), res.error ? "bad" : "ok");
+        load(cwd);
+      };
+    });
+  }
+
+  async function uploadFiles(fileList, overwrite) {
+    if (!fileList.length) return;
+    const fd = new FormData();
+    fd.append("path", cwd);
+    if (overwrite) fd.append("overwrite", "1");
+    for (const f of fileList) fd.append("files", f);
+    say(t("Subiendo {n} fichero(s)...", { n: fileList.length }));
+    const r = await api(`/api/files/${sid}/upload`, { method: "POST", body: fd });
+    if (r.error && r.error.startsWith("Ya existe") && !SAFE && !overwrite) {
+      if (confirm(t(r.error) + ". " + t("¿Sobrescribir?"))) {
+        const pending = [...fileList].filter((f) => !r.done.some((d) => d.endsWith("/" + f.name)));
+        return uploadFiles(pending, true);
+      }
+    }
+    say(r.error ? t(r.error) : t("Subidos: {n}", { n: r.done.length }), r.error ? "bad" : "ok");
+    load(cwd);
+  }
+
+  document.getElementById("files-btn").onclick = () => {
+    panel.hidden = !panel.hidden;
+    document.getElementById("files-btn").classList.toggle("on", !panel.hidden);
+    resize();
+    if (!panel.hidden && !cwd) load("");
+  };
+  document.getElementById("f-home").onclick = () => load("");
+  document.getElementById("f-up").onclick = () => parent && load(parent);
+  document.getElementById("f-refresh").onclick = () => load(cwd);
+  document.getElementById("f-mkdir").onclick = async () => {
+    const name = prompt(t("Nombre de la nueva carpeta:"));
+    if (!name) return;
+    const r = await api(`/api/files/${sid}/mkdir`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: join(cwd, name) }) });
+    say(r.error ? t(r.error) : "", r.error ? "bad" : "");
+    load(cwd);
+  };
+  const input = document.getElementById("f-input");
+  document.getElementById("f-upload").onclick = () => input.click();
+  input.onchange = () => { uploadFiles([...input.files]); input.value = ""; };
+  panel.addEventListener("dragover", (e) => { e.preventDefault(); panel.classList.add("drop"); });
+  panel.addEventListener("dragleave", () => panel.classList.remove("drop"));
+  panel.addEventListener("drop", (e) => { e.preventDefault(); panel.classList.remove("drop"); uploadFiles([...e.dataTransfer.files]); });
+</script>
+</body>
+</html>

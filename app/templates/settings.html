@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ajustes</h1>
+{% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+
+<div class="card" id="apariencia">
+  <h2>Apariencia</h2>
+  <form method="post" action="/settings/appearance" id="appearance-form">
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px">
+      <div>
+        <label style="margin-top:0">Tema</label>
+        <div class="seg">
+          <label><input type="radio" name="theme" value="auto" {{ 'checked' if p.theme == 'auto' }}> Automático</label>
+          <label><input type="radio" name="theme" value="light" {{ 'checked' if p.theme == 'light' }}> Claro</label>
+          <label><input type="radio" name="theme" value="dark" {{ 'checked' if p.theme == 'dark' }}> Oscuro</label>
+        </div>
+        <div class="hint">Automático sigue el modo claro/oscuro de Windows.</div>
+
+        <label>Color principal</label>
+        <div class="swatches">
+          {% for name, hex in accents.items() %}
+          <label title="{{ name }}"><input type="radio" name="accent" value="{{ name }}" {{ 'checked' if p.accent == name }}>
+            <span style="background: {{ hex }}"></span></label>
+          {% endfor %}
+        </div>
+
+        <label>Densidad de tablas</label>
+        <div class="seg">
+          <label><input type="radio" name="density" value="normal" {{ 'checked' if p.density == 'normal' }}> Normal</label>
+          <label><input type="radio" name="density" value="compact" {{ 'checked' if p.density == 'compact' }}> Compacta</label>
+        </div>
+
+        <label>Formato de fecha</label>
+        <select name="date_format">
+          {% for key, example in date_formats.items() %}<option value="{{ key }}" {{ 'selected' if p.date_format == key }}>{{ example }}</option>{% endfor %}
+        </select>
+
+        <label>Zona horaria</label>
+        <select name="timezone">
+          {% for tz in timezones %}<option {{ 'selected' if p.timezone == tz }}>{{ tz }}</option>{% endfor %}
+        </select>
+        <div class="hint">Se aplica a las fechas que se registren a partir de ahora.</div>
+      </div>
+
+      <div>
+        <label style="margin-top:0">Columnas de la lista del Inventario</label>
+        <div class="hint" style="margin-top:0">Marca las que quieres ver y ordénalas con las flechas. El nombre del servidor siempre aparece primero.</div>
+        <ul class="col-order" id="col-order">
+          {% for key in p.vm_columns %}
+          <li data-key="{{ key }}"><label class="inline"><input type="checkbox" checked> {{ VM_COLUMNS[key] }}</label>
+            <span><button type="button" class="up">▲</button><button type="button" class="down">▼</button></span></li>
+          {% endfor %}
+          {% for key, label in VM_COLUMNS.items() if key not in p.vm_columns %}
+          <li data-key="{{ key }}"><label class="inline"><input type="checkbox"> {{ label }}</label>
+            <span><button type="button" class="up">▲</button><button type="button" class="down">▼</button></span></li>
+          {% endfor %}
+        </ul>
+        <input type="hidden" name="vm_columns" id="vm-columns">
+      </div>
+    </div>
+    <p><button class="primary" type="submit">Guardar apariencia</button></p>
+  </form>
+</div>
+
+<div class="card" id="huellas">
+  <h2>Huellas SSH (primer contacto)</h2>
+  <form method="post" action="/settings/hostkeys" enctype="multipart/form-data" class="form" style="max-width:none">
+    <div class="seg">
+      <label><input type="radio" name="hostkey_policy" value="confirm" {{ 'checked' if hostkey_policy == 'confirm' }}> Confirmar cada huella nueva (recomendado)</label>
+      <label><input type="radio" name="hostkey_policy" value="auto" {{ 'checked' if hostkey_policy == 'auto' }}> Aceptar la primera automáticamente</label>
+    </div>
+    <div class="hint">Con "confirmar", la primera vez que conectas con un servidor su huella queda pendiente y no se envía ninguna
+      credencial hasta que la aceptes (en la ficha o en <a href="/hostkeys">Huellas pendientes</a>). Si la huella cambia después,
+      siempre se bloquea la conexión.</div>
+    <label>Importar huellas conocidas (<code>known_hosts</code>) <span class="muted">{% if known_hosts_lines %}— hay {{ known_hosts_lines }} líneas importadas{% endif %}</span></label>
+    <input type="file" name="known_hosts_file">
+    <div class="hint">Por ejemplo tu <code>%USERPROFILE%\.ssh\known_hosts</code> o el de un bastión. Los servidores que aparezcan en él
+      usarán esa huella directamente, sin confirmación.</div>
+    {% if known_hosts_lines %}<label class="inline" style="margin-top:8px"><input type="checkbox" name="clear_known_hosts" value="1"> Borrar las huellas importadas</label>{% endif %}
+    <p><button class="primary" type="submit">Guardar</button></p>
+  </form>
+</div>
+
+<div class="card" id="sondas">
+  <h2>Detección de versiones</h2>
+  <p class="small muted" style="margin-top:0">Detectan software instalado fuera de los paquetes del sistema (compilado a mano, Java, Node...)
+    ejecutando su comando de versión, en el host y dentro de los contenedores. Solo se lanzan si el ejecutable existe.
+    La <b>expresión regular</b> debe tener un grupo <code>( )</code> que capture la versión.</p>
+  <form method="post" action="/settings/probes" autocomplete="off">
+    <div class="table-wrap" style="max-height:420px"><table>
+      <thead><tr><th>Activa</th><th>Nombre</th><th>Ejecutable</th><th>Comando</th><th>Expresión (versión)</th><th></th></tr></thead>
+      <tbody>
+      {% for pr in probes %}<tr>
+        <td><input type="checkbox" name="enabled_{{ pr.id }}" value="1" {{ 'checked' if pr.enabled }}></td>
+        <td><input name="name_{{ pr.id }}" value="{{ pr.name }}" style="width:130px"></td>
+        <td><input name="bin_{{ pr.id }}" value="{{ pr.bin }}" class="mono" style="width:120px"></td>
+        <td><input name="command_{{ pr.id }}" value="{{ pr.command }}" class="mono" style="width:200px"></td>
+        <td><input name="regex_{{ pr.id }}" value="{{ pr.regex }}" class="mono" style="width:200px"></td>
+        <td><button type="submit" class="danger" formaction="/settings/probes/{{ pr.id }}/delete" formnovalidate
+              data-confirm="¿Eliminar la detección «{{ pr.name }}»? Los cambios sin guardar del resto de la tabla se perderán."
+              title="Eliminar esta detección">Eliminar</button></td>
+      </tr>{% endfor %}
+      <tr>
+        <td class="muted small">Nueva</td>
+        <td><input name="new_name" placeholder="mi-app" style="width:130px"></td>
+        <td><input name="new_bin" placeholder="/opt/miapp/bin/miapp" class="mono" style="width:120px"></td>
+        <td><input name="new_command" placeholder="/opt/miapp/bin/miapp --version" class="mono" style="width:200px"></td>
+        <td><input name="new_regex" placeholder="version ([\d.]+)" class="mono" style="width:200px"></td>
+        <td></td>
+      </tr>
+      </tbody>
+    </table></div>
+    <p><button class="primary" type="submit">Guardar</button></p>
+  </form>
+</div>
+
+<div class="grid">
+  <div class="card form" id="seguro">
+    <h2>Modo seguro</h2>
+    <form method="post" action="/settings/safe-mode">
+      <label class="inline" style="margin:0"><input type="checkbox" name="safe_mode" value="1" {{ 'checked' if safe_mode }}>
+        <b>Activado</b> (recomendado)</label>
+      <p class="small">Antes de ejecutar algo que pueda reiniciar, apagar o romper un servidor, la aplicación lo detiene y hay que escribir
+        <b>CONFIRMO</b>. Queda registrado en Auditoría. Funciona en <b>Ejecución remota</b> y en la <b>terminal</b> (revisa la línea al pulsar Intro).
+        En el panel de ficheros impide borrar y sobrescribir.</p>
+      <details class="small"><summary>Qué se detecta ({{ safe_rules|length }} reglas)</summary>
+        <ul>{% for _rx, desc in safe_rules %}<li>{{ desc }}</li>{% endfor %}</ul>
+        <p class="hint">Es una red de seguridad contra errores, no una barrera infalible: un comando muy disfrazado podría no detectarse.</p>
+      </details>
+      <p><button class="primary" type="submit">Guardar</button></p>
+    </form>
+  </div>
+  <div class="card form">
+    <h2>Escaneos y comandos</h2>
+    <form method="post" action="/settings">
+      <label>Servidores escaneados a la vez</label>
+      <input type="number" name="scan_concurrency" min="1" max="100" value="{{ s.scan_concurrency }}">
+      <label>Servidores a la vez en ejecución remota</label>
+      <input type="number" name="command_concurrency" min="1" max="100" value="{{ s.command_concurrency }}">
+      <label>Escaneo automático cada X horas (0 = desactivado)</label>
+      <input type="number" name="auto_scan_hours" min="0" max="720" value="{{ s.auto_scan_hours }}">
+      <div class="hint">Solo funciona mientras la aplicación esté desbloqueada (la contraseña maestra solo está en memoria).</div>
+      <label>Bloquear tras X minutos sin actividad (0 = nunca)</label>
+      <input type="number" name="auto_lock_minutes" min="0" max="1440" value="{{ s.auto_lock_minutes }}">
+      <div class="hint">Al bloquearse, la clave sale de la memoria. No se bloquea con escaneos, ejecuciones o terminales en curso.
+        Si usas el escaneo automático, pon 0 aquí o no podrá ejecutarse.</div>
+      <label>Conservar historial (días)</label>
+      <div class="row">
+        <div><span class="small muted">Ejecuciones remotas</span><input type="number" name="retention_jobs_days" min="1" max="3650" value="{{ s.retention_jobs_days }}"></div>
+        <div><span class="small muted">Historial de escaneos</span><input type="number" name="retention_history_days" min="1" max="3650" value="{{ s.retention_history_days }}"></div>
+        <div><span class="small muted">Auditoría</span><input type="number" name="retention_audit_days" min="30" max="3650" value="{{ s.retention_audit_days }}"></div>
+      </div>
+      <div class="hint">Se limpia una vez al día. El inventario actual (servidores, paquetes) nunca se borra.</div>
+      <p><button class="primary" type="submit">Guardar</button></p>
+    </form>
+  </div>
+  <div class="card form">
+    <h2>Cambiar contraseña maestra</h2>
+    <form method="post" action="/settings/password" autocomplete="off">
+      <label>Contraseña actual</label><input type="password" name="old" required>
+      <label>Nueva contraseña (10+ caracteres)</label><input type="password" name="new" required minlength="10">
+      <label>Repite la nueva</label><input type="password" name="new2" required minlength="10">
+      <p><button class="primary" type="submit">Cambiar</button></p>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Copia de seguridad</h2>
+    <p>Exportar, importar y restaurar se hace ahora desde su propia sección.</p>
+    <a class="btn primary" href="/backup">Ir a Copias de seguridad →</a>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const order = document.getElementById("col-order");
+  order.addEventListener("click", (e) => {
+    const li = e.target.closest("li");
+    if (e.target.classList.contains("up") && li.previousElementSibling) order.insertBefore(li, li.previousElementSibling);
+    if (e.target.classList.contains("down") && li.nextElementSibling) order.insertBefore(li.nextElementSibling, li);
+  });
+  document.getElementById("appearance-form").addEventListener("submit", () => {
+    document.getElementById("vm-columns").value = [...order.querySelectorAll("li")]
+      .filter((li) => li.querySelector("input").checked).map((li) => li.dataset.key).join(",");
+  });
+</script>
+{% endblock %}

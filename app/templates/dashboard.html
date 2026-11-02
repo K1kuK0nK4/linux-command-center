@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="head">
+  <h1>Panel</h1>
+  <span id="scan-status" class="muted"></span>
+  <button class="primary" onclick="startScan({all:true})" {{ 'disabled' if not total }}>Escanear todos</button>
+</div>
+
+{% if not total %}
+<div class="card">
+  <h2>¡Te damos la bienvenida! Primeros pasos</h2>
+  <ol>
+    <li>Da de alta tus servidores: <a href="/vms/new">una a una</a> (con su usuario y contraseña) o <a href="/vms/import">importando un CSV/Excel</a>.</li>
+    <li>Si muchos servidores comparten usuario, crea una <a href="/credentials/new">credencial compartida</a>.</li>
+    <li>Conecta la VPN del cliente y pulsa <b>Escanear</b>.</li>
+  </ol>
+</div>
+{% else %}
+<div class="kpis">
+  <div class="kpi"><div class="n">{{ total }}</div><div class="l">Servidores en inventario</div></div>
+  <a class="kpi ok" href="/vms?status=ok"><div class="n">{{ stats.ok or 0 }}</div><div class="l">Último escaneo correcto</div></a>
+  <a class="kpi bad" href="/vms?status=error"><div class="n">{{ stats.err or 0 }}</div><div class="l">Escaneo con error</div></a>
+  <a class="kpi" href="/vms?status=never"><div class="n">{{ stats.never or 0 }}</div><div class="l">Nunca escaneados</div></a>
+  <div class="kpi warn"><div class="n">{{ stats.stale_scan or 0 }}</div><div class="l">Sin escaneo correcto en +7 días</div></div>
+  <a class="kpi warn" href="/vms?reboot=1"><div class="n">{{ stats.reboot or 0 }}</div><div class="l">Requieren reinicio</div></a>
+  <div class="kpi bad"><div class="n">{{ stats.sec or 0 }}</div><div class="l">Con act. de seguridad pendientes</div></div>
+  <div class="kpi warn"><div class="n">{{ stats.stale_upd or 0 }}</div><div class="l">Sin actualizar en +30 días</div></div>
+</div>
+{% endif %}
+
+<div class="head" style="margin-bottom:10px">
+  <h2 style="margin:0;margin-right:auto">Gráficos <span class="muted small" style="font-weight:normal">· se actualizan solos cuando cambia el inventario</span></h2>
+  <button onclick="openEditor()">+ Nuevo gráfico</button>
+</div>
+<div class="charts viz-root" id="charts"></div>
+
+{% if total %}
+<div class="grid">
+  <div class="card">
+    <h2>Por cliente</h2>
+    <p class="hint" style="margin-top:0">Conecta la VPN del cliente y pulsa <b>Escanear</b> para escanear solo sus servidores.</p>
+    <table>
+      <thead><tr><th>Cliente</th><th>Servidores</th><th>Errores</th><th>Último escaneo correcto</th><th></th></tr></thead>
+      <tbody>{% for r in clients %}<tr>
+        <td><a href="/vms?client={{ (r.c or '__none__')|urlencode }}">{{ r.c or '(sin cliente)' }}</a></td><td>{{ r.n }}</td>
+        <td>{% if r.err %}<span class="badge b-bad">{{ r.err }}</span>{% endif %}</td>
+        <td class="small">{{ r.last_ok|ago }}</td>
+        <td><button onclick='startScan({client: {{ r.c|tojson }}})' title="Escanear los servidores de este cliente">Escanear</button></td>
+      </tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Más tiempo sin actualizar</h2>
+    <table>
+      <thead><tr><th>Servidor</th><th>Cliente</th><th>Última actualización</th></tr></thead>
+      <tbody>{% for r in stale %}
+        <tr><td><a href="/vms/{{ r.id }}">{{ r.name }}</a></td><td>{{ r.client }}</td>
+          <td class="{{ 'bad' if (r.last_pkg_update|days_since or 0) > 30 }}">{{ r.last_pkg_update }} <span class="muted small">({{ r.last_pkg_update|ago }})</span></td></tr>
+      {% else %}<tr><td colspan="3" class="muted">Sin datos todavía</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  {% if errors %}
+  <div class="card">
+    <h2>Errores en el último escaneo</h2>
+    <table>
+      <thead><tr><th>Servidor</th><th>Error</th></tr></thead>
+      <tbody>{% for r in errors %}
+        <tr><td><a href="/vms/{{ r.id }}">{{ r.name }}</a><div class="muted small">{{ r.host }}</div></td><td class="small bad">{{ r.last_scan_error }}</td></tr>
+      {% endfor %}</tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+<dialog id="editor">
+  <form method="dialog" id="editor-form" class="form" style="max-width:none">
+    <h2 id="editor-title">Nuevo gráfico</h2>
+    <input type="hidden" name="id">
+    <label>Título</label><input name="title" required placeholder="p.ej. Versiones de Apache en PRO">
+    <label>Tipo</label>
+    <div class="seg">{% for k, label in kinds.items() %}<label><input type="radio" name="kind" value="{{ k }}" {{ 'checked' if loop.first }}> {{ label }}</label>{% endfor %}</div>
+    <label>Agrupar los servidores por</label>
+    <select name="dimension">{% for k, label in dimensions.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+    <div id="pkg-field">
+      <label>Paquete(s)</label>
+      <input name="package" placeholder="httpd,apache2">
+      <div class="hint">Nombre exacto. Pon varios separados por comas si cambia entre distribuciones (RHEL <code>httpd</code> / Ubuntu <code>apache2</code>).</div>
+    </div>
+    <label>Solo estos servidores <span class="muted">(opcional)</span></label>
+    {% from "_multi.html" import multi %}
+    <div class="row">
+      {{ multi("f_client", "Todos los clientes", [("__none__", "(sin cliente)")] + zip_pairs(all_clients), [], False) }}
+      {{ multi("f_environment", "Todos los entornos", [("__none__", "(sin entorno)")] + zip_pairs(envs), [], False) }}
+    </div>
+    <div class="row" style="margin-top:8px">
+      {{ multi("f_tag", "Todas las etiquetas", tag_options(tags), [], False) }}
+      {{ multi("f_os_family", "Todas las familias", family_options(), [], False) }}
+    </div>
+    <div class="row" style="margin-top:8px">
+      {{ multi("f_os_name", "Todas las distribuciones", distro_options(), [], False) }}
+    </div>
+    <p style="display:flex;gap:8px;margin-bottom:0">
+      <button class="primary" type="submit" value="save">Guardar</button>
+      <button type="button" onclick="editor.close()">Cancelar</button>
+    </p>
+  </form>
+</dialog>
+{% endblock %}
+{% block scripts %}
+<script src="/static/lib/chart.umd.min.js"></script>
+<script src="/static/charts.js"></script>
+{% endblock %}

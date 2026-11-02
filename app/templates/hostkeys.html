@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Huellas pendientes · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Huellas SSH pendientes de confirmar</h1>
+{% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
+<p class="muted">Son servidores a los que te has conectado por primera vez. Hasta que aceptes su huella <b>no se envía ninguna
+  credencial</b>. Compárala con la del servidor (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>) o con la que
+  te facilite el cliente. También puedes importar un <code>known_hosts</code> en Ajustes.</p>
+{% if pending %}
+<form method="post" action="/hostkeys/accept" data-confirm="¿Aceptar las huellas seleccionadas? Hazlo solo si las has comprobado.">
+  <div class="table-wrap"><table>
+    <thead><tr><th><input type="checkbox" data-check-all=".hk"></th><th>Servidor</th><th>Cliente</th><th>Huella (SHA256)</th></tr></thead>
+    <tbody>{% for v in pending %}<tr>
+      <td><input type="checkbox" class="hk" name="ids" value="{{ v.id }}"></td>
+      <td><a href="/vms/{{ v.id }}">{{ v.name }}</a><div class="muted small mono">{{ v.host }}:{{ v.port }}</div></td>
+      <td>{{ v.client or '' }}</td>
+      <td class="mono small">{{ v.pending_host_key|fingerprint }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p><button class="primary" type="submit">Aceptar seleccionadas</button></p>
+</form>
+{% else %}
+<div class="card muted">No hay huellas pendientes.</div>
+{% endif %}
+{% endblock %}

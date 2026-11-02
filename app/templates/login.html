@@ -1,0 +1,22 @@
+<!doctype html>
+{% set P = prefs() %}<html lang="{{ get_lang() }}" data-theme="{{ P.theme }}" {% if P.accent != 'azul' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Linux Command Center</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="login-box card">
+  <div class="head" style="margin-bottom:8px"><h1 style="margin:0;margin-right:auto">&gt;_ Linux Command Center</h1>{% include "_lang.html" %}</div>
+  <p class="muted">Introduce la contraseña maestra para desbloquear la aplicación y las credenciales.</p>
+  {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+  <form method="post" action="/login" class="form">
+    <label for="password">Contraseña maestra</label>
+    <input type="password" id="password" name="password" autofocus required autocomplete="current-password">
+    <p><button class="primary" type="submit">Desbloquear</button></p>
+  </form>
+  {% include "_credit.html" %}
+</div>
+</body>
+</html>

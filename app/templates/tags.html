@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Clientes y etiquetas · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Clientes y etiquetas</h1>
+<p class="muted">Clientes, entornos y etiquetas en un solo sitio. Al <b>renombrar</b>, el cambio se aplica a todos sus servidores;
+  al <b>eliminar</b>, los servidores se quedan sin ese valor, pero no se borran.</p>
+{% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
+
+<div class="grid">
+  {% for kind, cat in catalogs.items() %}
+  <div class="card" id="{{ kind }}">
+    <h2>{{ cat.title }}</h2>
+    <form method="post" action="/catalog/{{ kind }}/new" class="filters">
+      <input name="name" placeholder="Nuevo {{ 'cliente' if kind == 'client' else 'entorno' }}" required maxlength="60">
+      <button class="primary" type="submit">+ Añadir</button>
+    </form>
+    <table>
+      <thead><tr><th>Nombre</th><th>Servidores</th><th></th></tr></thead>
+      <tbody>
+      {% for name, n in cat['items'] %}
+        <tr>
+          <td><form method="post" action="/catalog/{{ kind }}/rename" class="filters" style="margin:0;flex-wrap:nowrap">
+            <input type="hidden" name="old" value="{{ name }}">
+            <input name="name" value="{{ name }}" maxlength="60" style="min-width:0;flex:1">
+            <button type="submit" title="Guardar nombre">Guardar</button></form></td>
+          <td><a href="/vms?{{ kind }}={{ name|urlencode }}">{{ n }}</a></td>
+          <td><form method="post" action="/catalog/{{ kind }}/delete" data-confirm="¿Eliminar '{{ name }}'? {{ n }} servidores quedarán sin {{ 'cliente' if kind == 'client' else 'entorno' }}.">
+            <input type="hidden" name="name" value="{{ name }}"><button class="danger" type="submit">Eliminar</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">Todavía no hay ninguno.</td></tr>
+      {% endfor %}
+      {% if cat.none %}<tr><td class="muted">(sin {{ 'cliente' if kind == 'client' else 'entorno' }})</td>
+        <td><a href="/vms?{{ kind }}=__none__">{{ cat.none }}</a></td><td></td></tr>{% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  <div class="card" id="tags">
+    <h2>Etiquetas</h2>
+    <form method="post" action="/tags/new" class="filters">
+      <input name="name" placeholder="Nueva etiqueta" required maxlength="40">
+      <select name="color">{% for c in colors %}<option value="{{ c }}" style="color:{{ c }}">● color {{ loop.index }}</option>{% endfor %}</select>
+      <button class="primary" type="submit">+ Añadir</button>
+    </form>
+    <table>
+      <thead><tr><th>Nombre y color</th><th>Servidores</th><th></th></tr></thead>
+      <tbody>
+      {% for t in tags %}
+        <tr>
+          <td><form method="post" action="/tags/{{ t.id }}/edit" class="filters" style="margin:0;flex-wrap:nowrap">
+            <span class="tag" style="--tag: {{ t.color or '#898781' }};padding:0 4px;border:0;background:none"></span>
+            <input name="name" value="{{ t.name }}" maxlength="40" style="min-width:0;flex:1">
+            <select name="color" style="width:auto">{% for c in colors %}<option value="{{ c }}" style="color:{{ c }}" {{ 'selected' if t.color == c }}>● {{ loop.index }}</option>{% endfor %}</select>
+            <button type="submit" title="Guardar">Guardar</button></form></td>
+          <td><a href="/vms?tag={{ t.id }}">{{ t.vm_count }}</a></td>
+          <td><form method="post" action="/tags/{{ t.id }}/delete" data-confirm="¿Eliminar la etiqueta {{ t.name }}? Los servidores no se borran.">
+            <button class="danger" type="submit">Eliminar</button></form></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="muted">Todavía no hay etiquetas.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <div class="hint">Para etiquetar muchos servidores de golpe: en <a href="/vms">Inventario</a> selecciónalos y usa <i>Etiqueta → + Añadir</i>.</div>
+  </div>
+</div>
+{% endblock %}

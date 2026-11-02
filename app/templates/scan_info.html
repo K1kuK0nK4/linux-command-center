@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Qué hace el escaneo · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>¿Qué hace el escaneo?</h1>
+<div class="alert info">Abre <b>una conexión SSH</b> con el usuario del servidor, ejecuta un único script de <b>solo lectura</b>
+  y se desconecta. <b>No instala nada, no escribe ficheros, no descarga nada y no usa sudo (salvo para Docker, ver abajo)</b>.
+  Tarda unos segundos por servidor. Si el usuario no tiene permiso para leer algo, ese dato sale vacío y no da error.</div>
+
+<div class="card">
+  <h2>Qué consulta y para qué</h2>
+  <table>
+    <thead><tr><th>Dato</th><th>Comando</th><th>Dónde lo ves</th></tr></thead>
+    <tbody>
+      <tr><td>Sistema operativo y versión</td><td class="mono small">cat /etc/os-release · cat /etc/redhat-release</td><td>Ficha, Inventario, gráficos</td></tr>
+      <tr><td>Hostname, kernel, arquitectura</td><td class="mono small">hostname · uname -r · uname -m</td><td>Ficha; el kernel también como paquete <code>kernel-running</code></td></tr>
+      <tr><td>Tiempo encendida</td><td class="mono small">cat /proc/uptime</td><td>Ficha</td></tr>
+      <tr><td>Paquetes instalados (Debian/Ubuntu)</td><td class="mono small">dpkg-query -W</td><td>Ficha → Paquetes, Buscar paquetes</td></tr>
+      <tr><td>Paquetes instalados (RHEL)</td><td class="mono small">rpm -qa</td><td>Ficha → Paquetes, Buscar paquetes</td></tr>
+      <tr><td>Paquetes snap</td><td class="mono small">snap list</td><td>Ficha → Paquetes</td></tr>
+      <tr><td>Última actualización (Debian/Ubuntu)</td><td class="mono small">lee /var/log/apt/history.log</td><td>Ficha, Panel</td></tr>
+      <tr><td>Última actualización (RHEL)</td><td class="mono small">fecha de instalación más reciente en rpm</td><td>Ficha, Panel</td></tr>
+      <tr><td>Actualizaciones pendientes</td><td class="mono small">apt list --upgradable · dnf -C check-update</td><td>Inventario, Ficha (según la caché local; <code>-C</code> = sin descargar)</td></tr>
+      <tr><td>Actualizaciones de seguridad</td><td class="mono small">dnf -C updateinfo list --security</td><td>Inventario, Panel</td></tr>
+      <tr><td>¿Necesita reinicio?</td><td class="mono small">existe /var/run/reboot-required · kernel instalado vs en ejecución</td><td>Inventario, Panel</td></tr>
+      <tr><td>Puertos en escucha</td><td class="mono small">ss -tuln (o netstat -tuln)</td><td>Ficha → Puertos</td></tr>
+      <tr><td>Servicios en ejecución</td><td class="mono small">systemctl list-units --type=service --state=running</td><td>Ficha → Servicios</td></tr>
+      <tr><td>Software fuera de paquetes (detección de versiones)</td><td class="mono small">nginx -v · java -version · openssl version…</td><td>Ficha → Paquetes (origen "detección"); editables en Ajustes</td></tr>
+      <tr><td>Contenedores Docker / Podman</td><td class="mono small">docker ps -a · podman ps -a</td><td>Ficha → Contenedores, Inventario</td></tr>
+      <tr><td>SO y paquetes de cada contenedor en marcha</td><td class="mono small">docker exec &lt;id&gt; sh -c '…' (mismo tipo de lectura: os-release, dpkg/rpm/apk, detección de versiones)</td><td>Ficha → Paquetes ("Dónde"), Buscar paquetes</td></tr>
+    </tbody>
+  </table>
+  <p class="hint">Además, la primera vez guarda la <b>huella SSH</b> del servidor. Si cambia, no vuelve a conectar hasta que lo confirmes.
+    Al comparar con el escaneo anterior calcula los <b>cambios de paquetes</b>: instalados, actualizados y eliminados.</p>
+</div>
+
+<div class="alert warn"><b>Contenedores y sudo:</b> Docker suele necesitar root. Primero se intenta sin sudo (si el usuario
+  está en el grupo <code>docker</code>); si no se puede, se usa <code>sudo</code> (sin contraseña o con la contraseña de sudo del servidor)
+  <b>solo para listar contenedores y leer su inventario</b>. Queda registrado en Auditoría y en el log del servidor.
+  Solo se entra en los contenedores en marcha y nunca se modifica nada dentro.</div>
+
+<div class="card">
+  <h2>Script exacto que se ejecuta en el host</h2>
+  <pre class="out" style="max-height:420px">{{ script }}</pre>
+</div>
+<div class="card">
+  <h2>Script que se ejecuta dentro de cada contenedor en marcha</h2>
+  <pre class="out" style="max-height:420px">{{ container_script }}</pre>
+</div>
+<p class="muted">¿Quieres consultar algo más en todas los servidores? Guárdalo como comando en
+  <a href="/commands">Ejecución remota → Mi biblioteca</a> y lánzalo cuando quieras.</p>
+{% endblock %}

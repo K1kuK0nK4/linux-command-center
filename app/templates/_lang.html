@@ -1,0 +1,5 @@
+<form method="post" action="/lang" class="lang-switch">
+  <input type="hidden" name="next" value="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query }}">
+  <button name="lang" value="es" class="{{ 'on' if get_lang() == 'es' }}" title="Español">ES</button><button
+    name="lang" value="en" class="{{ 'on' if get_lang() == 'en' }}" title="English">EN</button>
+</form>

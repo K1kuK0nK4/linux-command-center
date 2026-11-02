@@ -1,0 +1,23 @@
+# Local data: must never be committed
+data/
+*.db
+*.db-wal
+*.db-shm
+*.lcc
+
+# Import/export files (they may contain passwords)
+*.xlsx
+*.xlsm
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.env

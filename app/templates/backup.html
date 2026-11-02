@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Copias de seguridad · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Copias de seguridad</h1>
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+{% if summary is defined %}
+<div class="alert ok">
+  Importada la exportación{% if imported_at %} del {{ imported_at }}{% endif %}:
+  <ul style="margin:6px 0 0">{% for section, values in summary.items() %}
+    <li><b>{{ section }}</b>: {% for k, n in values.items() %}{{ n }} {{ k }}{{ ', ' if not loop.last }}{% endfor %}</li>
+  {% else %}<li>No había nada que importar.</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Exportar todo (.lcc)</h2>
+    <p class="small muted" style="margin-top:0">Un único fichero <b>cifrado</b> (AES-256) con la contraseña que elijas, contraseñas incluidas.
+      Exportar e importar piden además la contraseña maestra. Sirve para guardar una copia, llevarla a otro PC o
+      pasársela a otra persona de tu equipo, que la importa en su propia instalación.</p>
+    <form method="post" action="/backup/export" class="form" style="max-width:none" autocomplete="off">
+      <label>Qué incluir</label>
+      {% set n = {'vms': counts.vms, 'credentials': counts.credentials, 'organization': counts.catalog ~ ' + ' ~ counts.tags,
+                  'commands': counts.commands, 'charts': counts.charts, 'settings': ''} %}
+      {% for key, label in sections.items() %}
+      <label class="inline" style="margin:4px 0"><input type="checkbox" name="s_{{ key }}" value="1" checked>
+        {{ label }} {% if n[key] != '' %}<span class="muted small">({{ n[key] }})</span>{% endif %}</label><br>
+      {% endfor %}
+      <div class="row">
+        <div><label>Contraseña del fichero (10+)</label><input type="password" name="file_password" required minlength="10" autocomplete="new-password"></div>
+        <div><label>Repítela</label><input type="password" name="file_password2" required minlength="10" autocomplete="new-password"></div>
+      </div>
+      <label>Tu contraseña maestra (para confirmar)</label>
+      <input type="password" name="master_password" required autocomplete="off">
+      <div class="hint">Sin la contraseña del fichero no se puede abrir: apúntala en tu gestor de contraseñas.
+        Si se lo pasas a otra persona, dale la contraseña por otro canal.</div>
+      <p><button class="primary" type="submit">Exportar</button></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Importar una exportación (.lcc)</h2>
+    <p class="small muted" style="margin-top:0">Añade lo que hay en el fichero a lo que ya tienes, sin borrar nada.</p>
+    <form method="post" action="/backup/import" enctype="multipart/form-data" class="form" style="max-width:none" autocomplete="off">
+      <input type="file" name="file" accept=".lcc" required style="width:100%">
+      <label>Contraseña del fichero</label>
+      <input type="password" name="file_password" required autocomplete="off">
+      <label>Tu contraseña maestra (para confirmar)</label>
+      <input type="password" name="master_password" required autocomplete="off">
+      <div class="hint">La tuya, la de esta instalación; no la de quien hizo la exportación.</div>
+      <label>Si algo ya existe</label>
+      <div class="seg">
+        <label><input type="radio" name="mode" value="add" checked> No tocarlo</label>
+        <label><input type="radio" name="mode" value="update"> Actualizarlo con el fichero</label>
+      </div>
+      <div class="hint">Un servidor "ya existe" si coincide cliente + IP + puerto. Las credenciales, comandos y etiquetas
+        se comparan por nombre.</div>
+      <p><button class="primary" type="submit">Importar</button></p>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Copia exacta (.db)</h2>
+    <p class="small">Un clon <b>completo</b> de la base de datos, incluido el historial de escaneos, paquetes, ejecuciones y auditoría.
+      Las credenciales van cifradas con tu contraseña maestra: para usarla necesitarás esa misma contraseña.</p>
+    <p><a class="btn primary" href="/settings/backup">Descargar copia exacta</a></p>
+    <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
+    <h2 style="font-size:14px">Restaurar una copia exacta</h2>
+    <form method="post" action="/backup/restore-db" enctype="multipart/form-data"
+          data-confirm="Se SUSTITUIRÁ todo lo que hay ahora por el contenido de la copia (lo actual se guarda aparte por si acaso). Después tendrás que entrar con la contraseña maestra de esa copia. ¿Continuar?">
+      <input type="file" name="file" accept=".db" required style="width:100%">
+      <p><button class="danger" type="submit">Restaurar y reemplazar todo</button></p>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>¿Cuál uso?</h2>
+  <table>
+    <thead><tr><th></th><th>Exportación .lcc</th><th>Copia exacta .db</th></tr></thead>
+    <tbody>
+      <tr><td>Qué contiene</td><td>Lo que marques: servidores, credenciales, organización, comandos, gráficos, ajustes</td><td>Absolutamente todo, con historial</td></tr>
+      <tr><td>Cifrado</td><td>Con la contraseña que eliges al exportar</td><td>Las credenciales, con tu contraseña maestra</td></tr>
+      <tr><td>Al cargarla</td><td>Se <b>añade</b> a lo que ya hay</td><td><b>Sustituye</b> todo</td></tr>
+      <tr><td>Ideal para</td><td>Pasar servidores/comandos a otra persona de tu equipo, migrar a otro PC</td><td>Copia periódica de seguridad</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Importar / Exportar · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1>Importar / Exportar servidores</h1>
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+{% if result %}
+<div class="alert {{ 'ok' if not result.errors else 'warn' }}">
+  {{ result.added }} servidores añadidos · {{ result.updated }} actualizados · {{ result.skipped }} ya existían y no se tocaron.
+  {% if result.errors %}<ul>{% for e in result.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  <p style="margin-bottom:0"><a href="/vms">Ver servidores →</a></p>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Importar</h2>
+    <ol class="small" style="padding-left:18px">
+      <li>Descarga la plantilla: <a href="/vms/import/plantilla.xlsx"><b>Excel</b></a> · <a href="/vms/import/plantilla.csv">CSV</a>.
+        También vale un fichero exportado desde aquí.</li>
+      <li>Rellena una fila por servidor. La hoja <i>Instrucciones</i> explica cada columna.</li>
+      <li>Súbelo:</li>
+    </ol>
+    <form method="post" action="/vms/import" enctype="multipart/form-data">
+      <input type="file" name="file" accept=".xlsx,.csv" required style="width:100%">
+      <label>Si un servidor ya existe (mismo cliente, host y puerto)</label>
+      <div class="seg">
+        <label><input type="radio" name="mode" value="add" checked> No tocarlo</label>
+        <label><input type="radio" name="mode" value="update"> Actualizarlo con el fichero</label>
+      </div>
+      <div class="hint">Al actualizar, las celdas vacías <b>no borran</b> nada y las etiquetas se añaden a las que ya tiene.</div>
+      <p><button class="primary" type="submit">Importar</button></p>
+    </form>
+    <div class="alert warn small" style="margin:0">Si el fichero lleva contraseñas, <b>bórralo de tu PC al terminar</b>
+      (y vacía la papelera). Dentro de la aplicación quedan cifradas.</div>
+  </div>
+
+  <div class="card">
+    <h2>Exportar</h2>
+    <p class="small muted" style="margin-top:0">Genera un fichero con el mismo formato que la importación: sirve de copia,
+      para pasarlo a otra persona de tu equipo o para editar muchos servidores en Excel y volver a importarlo.</p>
+    <form method="post" action="/vms/export" class="form" style="max-width:none" autocomplete="off">
+      <div class="row">
+        <div><label>Formato</label><select name="format"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV</option></select></div>
+        <div><label>Cliente</label><select name="client"><option value="">Todos ({{ total }} servidores)</option>
+          {% for c in clients %}<option>{{ c }}</option>{% endfor %}</select></div>
+        <div><label>Etiqueta</label><select name="tag"><option value="">Todas</option>
+          {% for t in tags %}<option value="{{ t.id }}">{{ t.name }}</option>{% endfor %}</select></div>
+      </div>
+      <label class="inline" style="margin-top:12px"><input type="checkbox" name="with_passwords" value="1" id="with-pw"> Incluir contraseñas</label>
+      <div id="pw-box" hidden>
+        <div class="alert warn small" style="margin:8px 0">El fichero llevará las contraseñas <b>sin cifrar</b>. Guárdalo en un sitio
+          seguro y bórralo cuando termines. Queda registrado en Auditoría.</div>
+        <label>Confirma tu contraseña maestra</label>
+        <input type="password" name="master_password" autocomplete="off">
+      </div>
+      <p><button class="primary" type="submit">Exportar</button></p>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Columnas del fichero</h2>
+  <table>
+    <thead><tr><th>Columna</th><th>¿Obligatoria?</th><th>Qué poner</th><th>Ejemplo</th></tr></thead>
+    <tbody>{% for name, required, desc, example in columns %}
+      <tr><td class="mono"><b>{{ name }}</b></td><td>{% if required %}<span class="badge b-info">sí</span>{% else %}<span class="muted">no</span>{% endif %}</td>
+        <td>{{ desc }}</td><td class="mono small">{{ example }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <div class="hint">Credencial: usa <b>usuario + password</b> (propia del servidor) <b>o</b> el nombre de una
+    <b>credencial</b> compartida{% if creds %} ({% for c in creds %}<code>{{ c.name }}</code>{{ ', ' if not loop.last }}{% endfor %}){% endif %}.
+    Si pones las dos y la compartida existe, se usa la compartida. Las claves SSH (.pem) no se exportan.</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const cb = document.getElementById("with-pw"), box = document.getElementById("pw-box");
+  cb.addEventListener("change", () => { box.hidden = !cb.checked; box.querySelector("input").required = cb.checked; });
+</script>
+{% endblock %}

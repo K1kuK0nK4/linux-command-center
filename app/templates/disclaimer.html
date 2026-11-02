@@ -1,0 +1,79 @@
+<!doctype html>
+{% set P = prefs() %}<html lang="{{ get_lang() }}" data-theme="{{ P.theme }}" {% if P.accent != 'azul' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ APP_NAME }}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="card" style="max-width:760px;margin:6vh auto">
+  <div class="head" style="margin-bottom:8px">
+    <h1 style="margin:0;margin-right:auto">&gt;_ {{ APP_NAME }}</h1>
+    {% include "_lang.html" %}
+  </div>
+  {% if get_lang() == 'en' %}
+  <h2>Disclaimer and terms of use</h2>
+  <div class="legal">
+    <p><b>{{ APP_NAME }}</b> is a personal tool created by <a href="{{ AUTHOR_URL }}" target="_blank" rel="noopener">{{ AUTHOR_NAME }}</a>,
+      a cybersecurity analyst, <b>not a professional software developer</b>. It has been built <b>with the help of artificial
+      intelligence</b> (Claude, by Anthropic). The code has not been audited by third parties.</p>
+    <ol>
+      <li><b>Provided "as is".</b> The software is offered free of charge and without warranty of any kind, express or implied,
+        including fitness for a particular purpose, accuracy or absence of errors. Use it at your own risk.</li>
+      <li><b>No liability.</b> The author shall not be liable for any damage, data loss, service interruption, security
+        incident or any other consequence arising from the use or inability to use this tool.</li>
+      <li><b>Authorized use only.</b> Use it only on systems you are <b>explicitly authorized</b> to access, in accordance
+        with your organization's policies, your clients' contracts and applicable law (e.g. GDPR). Commands executed through the
+        tool, including remote and <code>sudo</code> commands, are <b>your sole responsibility</b>.</li>
+      <li><b>Verify the results.</b> The inventory, version comparisons and "affected servers" lists are aids and may be
+        incomplete or wrong (backports, package names, outdated caches…). Always confirm against the vendor's official advisories
+        before making decisions.</li>
+      <li><b>Credentials.</b> You are responsible for protecting your master password, your exports and the computer where
+        the tool runs. Exported files with passwords must be stored securely and deleted when no longer needed.</li>
+      <li><b>Not an official product.</b> This is not a product of, nor is it endorsed or supported by, any company,
+        employer or client.</li>
+    </ol>
+  </div>
+  {% else %}
+  <h2>Aviso legal y condiciones de uso</h2>
+  <div class="legal">
+    <p><b>{{ APP_NAME }}</b> es una herramienta personal creada por <a href="{{ AUTHOR_URL }}" target="_blank" rel="noopener">{{ AUTHOR_NAME }}</a>,
+      analista de ciberseguridad <b>que no se dedica profesionalmente al desarrollo de software</b>. Se ha desarrollado <b>con ayuda de inteligencia
+      artificial</b> (Claude, de Anthropic). Su código no ha sido auditado por terceros.</p>
+    <ol>
+      <li><b>Se ofrece "tal cual".</b> El software se proporciona gratis y sin garantía de ningún tipo, expresa o implícita,
+        incluida su idoneidad para un fin concreto, su exactitud o la ausencia de errores. Lo usas bajo tu propia responsabilidad.</li>
+      <li><b>Sin responsabilidad.</b> Quien ha creado esta herramienta no se hace responsable de ningún daño, pérdida de datos, interrupción de servicio,
+        incidente de seguridad ni cualquier otra consecuencia derivada del uso o de la imposibilidad de uso de esta herramienta.</li>
+      <li><b>Solo uso autorizado.</b> Úsala únicamente en sistemas a los que tengas <b>autorización expresa</b> para acceder,
+        cumpliendo las políticas de tu organización, los contratos con tus clientes y la legislación aplicable (p. ej. RGPD).
+        Los comandos que ejecutes con ella, incluidos los remotos y con <code>sudo</code>, son <b>responsabilidad exclusivamente tuya</b>.</li>
+      <li><b>Verifica los resultados.</b> El inventario, las comparaciones de versiones y las listas de "servidores afectados" son
+        una ayuda y pueden ser incompletos o erróneos (backports, nombres de paquete, cachés desactualizadas…). Contrasta
+        siempre con los avisos oficiales del fabricante antes de tomar decisiones.</li>
+      <li><b>Credenciales.</b> Eres responsable de proteger tu contraseña maestra, tus exportaciones y el equipo donde se
+        ejecuta la herramienta. Los ficheros exportados con contraseñas deben guardarse de forma segura y borrarse cuando ya no hagan falta.</li>
+      <li><b>No es un producto oficial.</b> No es un producto de ninguna empresa ni cliente, ni cuenta con su respaldo
+        ni con su soporte.</li>
+    </ol>
+  </div>
+  {% endif %}
+
+  {% if accepted %}
+  <p class="muted small">{{ _('Aceptado el') }} {{ accepted }}.</p>
+  <p><a class="btn" href="/">← {{ _('Volver') }}</a></p>
+  {% else %}
+  <form method="post" action="/disclaimer">
+    <label class="inline" style="margin:14px 0"><input type="checkbox" name="accept" value="1" required>
+      {{ _('He leído y acepto el aviso legal y las condiciones de uso.') }}</label>
+    <p style="display:flex;gap:8px">
+      <button class="primary" type="submit">{{ _('Aceptar y continuar') }}</button>
+    </p>
+  </form>
+  <form method="post" action="/logout"><button type="submit">{{ _('No acepto (salir)') }}</button></form>
+  {% endif %}
+  {% include "_credit.html" %}
+</div>
+</body>
+</html>
