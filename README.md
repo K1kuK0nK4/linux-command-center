@@ -15,8 +15,7 @@ without installing anything on a single server.
 
 ## Why this exists
 
-The last few years have brought a constant stream of critical Linux vulnerabilities — OpenSSH *regreSSHion*,
-the `xz` backdoor, glibc, sudo, OpenSSL… Every time, the same questions come up: **which servers run the
+The last few weeks have brought a constant stream of critical vulnerabilities — PHP2Shell, Java, Linux Kernel, Brotli decoder, OpenSSL… Every time, the same questions come up: **which servers run the
 affected package, in which version, and are they patched yet?**
 
 Answering that across dozens of servers that belong to different clients, behind different VPNs, usually means
@@ -47,7 +46,6 @@ servers: it simply connects over SSH, reads, and disconnects.
   scan one client at a time while you are on its VPN.
 - **Dashboard and custom charts** — OS, kernels, package versions, patch age, containers… they refresh by
   themselves and every slice links to the servers behind it.
-- **English and Spanish** interface, light/dark theme, accent colour, column selection.
 
 ## Security by design
 
@@ -124,15 +122,6 @@ docker compose up -d --build
 (Or download the new ZIP and run the same command in its folder.) Your data is kept: it lives in the Docker volume
 `linux-command-center-data`, not in the project folder.
 
-### Everyday commands
-
-| What | Command |
-|---|---|
-| Stop | `docker compose stop` (or the ■ button in Docker Desktop) |
-| Start again | `docker compose start` |
-| Logs | `docker compose logs -f` |
-| Remove the app **and all its data** | `docker compose down -v` |
-
 ## Getting started
 
 1. **Create the master password.** It encrypts everything and cannot be recovered — keep it in your password
@@ -167,8 +156,6 @@ every system you add.
 - [ ] **Access review** — users with a shell, sudo rights and `authorized_keys` fingerprints.
 - [ ] **Change alerts** — new listening ports, users or services since the last scan.
 - [ ] **Reports** — per-client PDF/Excel reports: unpatched servers, EOL systems, hardening status.
-- [ ] **PAM integration** — fetch credentials on demand from Delinea Secret Server / CyberArk, or connect through
-      their SSH proxies, so no secret is stored locally.
 
 Ideas and feedback are welcome in [Issues](https://github.com/K1kuK0nK4/linux-command-center/issues).
 
