@@ -1,7 +1,7 @@
-"""Conexión SSH a los servidores.
+"""SSH connections to the servers.
 
-La huella del servidor se guarda la primera vez (TOFU). Si después cambia, se rechaza
-la conexión antes de enviar la contraseña, para evitar ataques de intermediario.
+The server fingerprint is saved the first time (TOFU). If it changes later, the connection
+is refused before the password is sent, to prevent man-in-the-middle attacks.
 """
 import asyncio
 
@@ -17,8 +17,8 @@ class SSHError(Exception):
     pass
 
 
-# Credenciales tecleadas al conectar y marcadas como "recordar": solo en memoria, se pierden al
-# bloquear la aplicación o reiniciarla. Nunca se guardan en la base de datos.
+# Credentials typed when connecting and marked "remember": memory only, lost when the application
+# is locked or restarted. They are never saved to the database.
 session_auth = {}
 
 
@@ -28,7 +28,7 @@ def _stored(vm):
 
 
 def needs(vm):
-    """Qué falta para conectar: 'user', 'password' o None si está todo (guardado o en memoria)."""
+    """What is missing to connect: 'user', 'password', or None if everything is there (saved or in memory)."""
     cred = _stored(vm)
     extra = session_auth.get(vm["id"], {})
     if not ((cred and cred["username"]) or extra.get("username")):
@@ -39,7 +39,7 @@ def needs(vm):
 
 
 def resolve_auth(vm, override=None):
-    """Combina lo guardado con lo tecleado al conectar (que solo rellena lo que falta)."""
+    """Merges what is saved with what was typed when connecting (which only fills in what is missing)."""
     cred = _stored(vm)
     extra = {**session_auth.get(vm["id"], {}), **{k: v for k, v in (override or {}).items() if v}}
     stored_pw = vault.decrypt(cred["password_enc"]) if cred else None
@@ -52,9 +52,9 @@ def resolve_auth(vm, override=None):
     auth["sudo_password"] = ((vault.decrypt(cred["sudo_password_enc"]) if cred else None)
                              or extra.get("sudo_password") or auth["password"] or "")
     if not auth["username"]:
-        raise SSHError("Falta el usuario: este servidor no lo tiene guardado")
+        raise SSHError("Missing user: this server does not have it saved")
     if not auth["password"] and not auth["private_key"]:
-        raise SSHError("Falta la contraseña: este servidor no la tiene guardada")
+        raise SSHError("Missing password: this server does not have it saved")
     return auth
 
 
@@ -67,7 +67,7 @@ def sudo_password(vm, override=None):
 
 
 def known_hosts_key(host, port):
-    """Busca la huella en el known_hosts importado en Ajustes (admite nombres hasheados y [host]:puerto)."""
+    """Looks up the fingerprint in the known_hosts imported in Settings (accepts hashed names and [host]:port)."""
     text = db.get_setting("known_hosts", "")
     if not text:
         return None
@@ -79,11 +79,11 @@ def known_hosts_key(host, port):
 
 
 async def first_contact(vm, host, port, tunnel=None):
-    """Primera conexión con un servidor: de dónde sacamos su huella.
+    """First contact with a server: where we get its fingerprint from.
 
-    1. Del known_hosts importado, si está ahí.
-    2. Si no: política "auto" = confiar en la primera (TOFU); "confirm" = guardarla como pendiente
-       y NO conectar (ni enviar credenciales) hasta que la confirmes.
+    1. From the imported known_hosts, if it is there.
+    2. Otherwise: policy "auto" = trust the first one (TOFU); "confirm" = save it as pending
+       and do NOT connect (nor send credentials) until you confirm it.
     """
     known = known_hosts_key(host, port)
     if known:
@@ -92,7 +92,7 @@ async def first_contact(vm, host, port, tunnel=None):
         return known
     key = await asyncio.wait_for(asyncssh.get_server_host_key(host, port, tunnel=tunnel, config=None), CONNECT_TIMEOUT)
     if key is None:
-        raise SSHError("El servidor no devolvió clave de host")
+        raise SSHError("The server did not return a host key")
     text = key.export_public_key("openssh").decode().strip()
     fp = key.get_fingerprint("sha256")
     if db.get_setting("hostkey_policy", "confirm") == "auto":
@@ -100,35 +100,35 @@ async def first_contact(vm, host, port, tunnel=None):
         db.audit("hostkey_nueva", f"{vm['name']} ({host}) {fp}")
         return text
     db.ex("UPDATE vms SET pending_host_key=? WHERE id=?", (text, vm["id"]))
-    raise SSHError(f"Huella nueva pendiente de confirmar: {fp}. Compruébala y acéptala en la ficha del servidor "
-                   "o en Inventario → Huellas pendientes.")
+    raise SSHError(f"New fingerprint pending confirmation: {fp}. Check it and accept it on the server page "
+                   "or in Inventory → Pending fingerprints.")
 
 
 MAX_JUMPS = 3
 
 
 async def _close_with(conn, jump):
-    """Cuando se cierra la conexión con el servidor, se cierra también la del bastión."""
+    """When the connection to the server is closed, the bastion connection is closed too."""
     await conn.wait_closed()
     jump.close()
 
 
 async def open_jump(vm, depth):
-    """Conexión con el bastión (otro servidor del inventario) por el que hay que pasar para llegar a vm."""
+    """Connection to the bastion (another server in the inventory) that must be passed through to reach vm."""
     jump = db.q1("SELECT * FROM vms WHERE id=?", (vm["jump_vm_id"],))
     if not jump:
-        raise SSHError("El bastión configurado ya no existe en el inventario")
+        raise SSHError("The configured bastion no longer exists in the inventory")
     if depth >= MAX_JUMPS:
-        raise SSHError("Demasiados saltos encadenados (¿un bastión apunta a otro en bucle?)")
+        raise SSHError("Too many chained jumps (is a bastion pointing to another in a loop?)")
     try:
         return await connect(jump, None, depth + 1)
     except SSHError as e:
-        raise SSHError(f"Bastión {jump['name']}: {e}")
+        raise SSHError(f"Bastion {jump['name']}: {e}")
 
 
 async def connect(vm, override=None, depth=0):
     if not vault.unlocked:
-        raise SSHError("La aplicación está bloqueada")
+        raise SSHError("The application is locked")
     auth = resolve_auth(vm, override)
     host, port = vm["host"], vm["port"] or 22
 
@@ -137,9 +137,9 @@ async def connect(vm, override=None, depth=0):
         try:
             client_keys = [asyncssh.import_private_key(auth["private_key"], auth["passphrase"])]
         except Exception as e:
-            raise SSHError(f"No se pudo leer la clave privada: {e}")
+            raise SSHError(f"Could not read the private key: {e}")
 
-    # Con bastión, la conexión al servidor viaja dentro de la del bastión (como ssh -J)
+    # With a bastion, the server connection travels inside the bastion's one (like ssh -J)
     jump = await open_jump(vm, depth) if vm["jump_vm_id"] else None
     try:
         conn = await _connect(vm, host, port, auth, client_keys, jump)
@@ -175,17 +175,17 @@ async def _connect(vm, host, port, auth, client_keys, jump):
             keepalive_interval=30,
         ), CONNECT_TIMEOUT * 2)
     except asyncssh.HostKeyNotVerifiable:
-        raise SSHError("¡La clave del servidor ha CAMBIADO! Posible ataque de intermediario o servidor "
-                       "reinstalado. Verifícalo y, si es legítimo, pulsa 'Aceptar nueva clave' en la ficha del servidor.")
+        raise SSHError("The server key has CHANGED! Possible man-in-the-middle attack or reinstalled "
+                       "server. Verify it and, if it is legitimate, press 'Accept new key' on the server page.")
     except asyncssh.PermissionDenied:
-        raise SSHError("Autenticación rechazada (usuario/contraseña incorrectos)")
+        raise SSHError("Authentication rejected (wrong user/password)")
     except (asyncio.TimeoutError, TimeoutError):
-        raise SSHError("Tiempo de conexión agotado (¿VPN conectada? ¿IP/puerto correctos?)")
+        raise SSHError("Connection timed out (IP/port correct?)")
     except ConnectionRefusedError:
-        raise SSHError("Conexión rechazada (¿SSH escucha en ese puerto?)")
+        raise SSHError("Connection refused (is SSH listening on that port?)")
     except SSHError:
         raise
     except OSError as e:
-        raise SSHError(f"Error de red: {e}")
+        raise SSHError(f"Network error: {e}")
     except asyncssh.Error as e:
-        raise SSHError(f"Error SSH: {e.reason if hasattr(e, 'reason') else e}")
+        raise SSHError(f"SSH error: {e.reason if hasattr(e, 'reason') else e}")

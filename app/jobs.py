@@ -1,4 +1,4 @@
-"""Ejecución masiva de comandos en varios servidores a la vez."""
+"""Bulk command execution on several servers at once."""
 import asyncio
 import shlex
 
@@ -6,7 +6,7 @@ from . import db
 from .ssh import SSHError, connect, sudo_password
 
 MAX_OUTPUT = 200_000
-_tasks = set()
+RUNNING = {}   # job_id -> running task (so it can be cancelled)
 
 
 def create_job(vm_ids, command, use_sudo, timeout_s, overrides=None):
@@ -14,13 +14,22 @@ def create_job(vm_ids, command, use_sudo, timeout_s, overrides=None):
     job_id = db.ex("INSERT INTO jobs(command, use_sudo, timeout_s, created_at, target_count) VALUES(?,?,?,?,?)",
                    (command, 1 if use_sudo else 0, timeout_s, db.now(), len(vms)))
     with db.tx() as c:
-        c.executemany("INSERT INTO job_results(job_id, vm_id, vm_name, status) VALUES(?,?,?,'pendiente')",
+        c.executemany("INSERT INTO job_results(job_id, vm_id, vm_name, status) VALUES(?,?,?,'pending')",
                       [(job_id, v["id"], v["name"]) for v in vms])
-    db.audit("comando_masivo", f"ejecución #{job_id} en {len(vms)} servidores{' con sudo' if use_sudo else ''}: {command}")
+    db.audit("comando_masivo", f"run #{job_id} on {len(vms)} servers{' with sudo' if use_sudo else ''}: {command}")
     t = asyncio.create_task(_run_job(job_id, [v["id"] for v in vms], command, use_sudo, timeout_s, overrides or {}))
-    _tasks.add(t)
-    t.add_done_callback(_tasks.discard)
+    RUNNING[job_id] = t
+    t.add_done_callback(lambda _: RUNNING.pop(job_id, None))
     return job_id
+
+
+def cancel_job(job_id):
+    """Cancels a running job: closes its connections and marks what is pending as cancelled."""
+    task = RUNNING.get(job_id)
+    if not task or task.done():
+        return False
+    task.cancel()
+    return True
 
 
 async def _run_job(job_id, vm_ids, command, use_sudo, timeout_s, overrides):
@@ -30,8 +39,13 @@ async def _run_job(job_id, vm_ids, command, use_sudo, timeout_s, overrides):
         async with sem:
             await _run_one(job_id, vm_id, command, use_sudo, timeout_s, overrides.get(vm_id))
 
-    await asyncio.gather(*(one(v) for v in vm_ids), return_exceptions=True)
-    db.ex("UPDATE jobs SET finished_at=? WHERE id=?", (db.now(), job_id))
+    try:
+        await asyncio.gather(*(one(v) for v in vm_ids), return_exceptions=True)
+    except asyncio.CancelledError:
+        db.ex("UPDATE job_results SET status='cancelled', finished_at=? WHERE job_id=? "
+              "AND status IN ('pending', 'running')", (db.now(), job_id))
+    finally:
+        db.ex("UPDATE jobs SET finished_at=? WHERE id=?", (db.now(), job_id))
 
 
 def _set(job_id, vm_id, **fields):
@@ -40,7 +54,7 @@ def _set(job_id, vm_id, **fields):
 
 
 async def _run_one(job_id, vm_id, command, use_sudo, timeout_s, override=None):
-    _set(job_id, vm_id, status="ejecutando", started_at=db.now())
+    _set(job_id, vm_id, status="running", started_at=db.now())
     vm = db.q1("SELECT * FROM vms WHERE id=?", (vm_id,))
     try:
         async with await connect(vm, override) as conn:
@@ -56,11 +70,11 @@ async def _run_one(job_id, vm_id, command, use_sudo, timeout_s, override=None):
             r = await conn.run(full, input=stdin, check=False, timeout=timeout_s,
                                encoding="utf-8", errors="replace")
         code = r.exit_status
-        _set(job_id, vm_id, status="ok" if code == 0 else "fallo", exit_code=code,
+        _set(job_id, vm_id, status="ok" if code == 0 else "failed", exit_code=code,
              stdout=(r.stdout or "")[:MAX_OUTPUT], stderr=(r.stderr or "")[:MAX_OUTPUT], finished_at=db.now())
     except SSHError as e:
         _set(job_id, vm_id, status="error", stderr=str(e), finished_at=db.now())
     except (asyncio.TimeoutError, TimeoutError):
-        _set(job_id, vm_id, status="error", stderr=f"Tiempo agotado ({timeout_s}s)", finished_at=db.now())
+        _set(job_id, vm_id, status="error", stderr=f"Timed out ({timeout_s}s)", finished_at=db.now())
     except Exception as e:
         _set(job_id, vm_id, status="error", stderr=f"{type(e).__name__}: {e}", finished_at=db.now())

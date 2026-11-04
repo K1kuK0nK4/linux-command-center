@@ -1,15 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Huellas pendientes · {{ APP_NAME }}{% endblock %}
+{% block title %}Pending fingerprints · {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Huellas SSH pendientes de confirmar</h1>
+<h1>SSH fingerprints pending confirmation</h1>
 {% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
-<p class="muted">Son servidores a los que te has conectado por primera vez. Hasta que aceptes su huella <b>no se envía ninguna
-  credencial</b>. Compárala con la del servidor (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>) o con la que
-  te facilite el cliente. También puedes importar un <code>known_hosts</code> en Ajustes.</p>
+<p class="muted">These are servers you connected to for the first time. Until you accept their fingerprint <b>no credential is sent</b>. Compare it with the server's (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>) or with the one provided by the server's owner. You can also import a <code>known_hosts</code> in Settings.</p>
 {% if pending %}
-<form method="post" action="/hostkeys/accept" data-confirm="¿Aceptar las huellas seleccionadas? Hazlo solo si las has comprobado.">
+<form method="post" action="/hostkeys/accept" data-confirm="Accept the selected fingerprints? Only do it if you have checked them.">
   <div class="table-wrap"><table>
-    <thead><tr><th><input type="checkbox" data-check-all=".hk"></th><th>Servidor</th><th>Cliente</th><th>Huella (SHA256)</th></tr></thead>
+    <thead><tr><th><input type="checkbox" data-check-all=".hk"></th><th>Server</th><th>Organization</th><th>Fingerprint (SHA256)</th></tr></thead>
     <tbody>{% for v in pending %}<tr>
       <td><input type="checkbox" class="hk" name="ids" value="{{ v.id }}"></td>
       <td><a href="/vms/{{ v.id }}">{{ v.name }}</a><div class="muted small mono">{{ v.host }}:{{ v.port }}</div></td>
@@ -17,9 +15,9 @@
       <td class="mono small">{{ v.pending_host_key|fingerprint }}</td>
     </tr>{% endfor %}</tbody>
   </table></div>
-  <p><button class="primary" type="submit">Aceptar seleccionadas</button></p>
+  <p><button class="primary" type="submit">Accept selected</button></p>
 </form>
 {% else %}
-<div class="card muted">No hay huellas pendientes.</div>
+<div class="card muted">No pending fingerprints.</div>
 {% endif %}
 {% endblock %}

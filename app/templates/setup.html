@@ -1,23 +1,23 @@
 <!doctype html>
-{% set P = prefs() %}<html lang="{{ get_lang() }}" data-theme="{{ P.theme }}" {% if P.accent != 'azul' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
+{% set P = prefs() %}<html lang="{{ get_lang() }}" data-theme="{{ P.theme }}" {% if P.accent != 'blue' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Linux Command Center · Primer arranque</title>
+  <title>Linux Command Center · First run</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <div class="login-box card" style="max-width:480px">
-  <div class="head" style="margin-bottom:8px"><h1 style="margin:0;margin-right:auto">Primer arranque</h1>{% include "_lang.html" %}</div>
-  <p>Crea la <b>contraseña maestra</b>. Sirve para entrar en la aplicación y para cifrar todas las contraseñas de los servidores.</p>
-  <div class="alert warn">Si la olvidas <b>no se puede recuperar</b>: tendrías que volver a dar de alta las credenciales. Guárdala en tu gestor de contraseñas.</div>
+  <div class="head" style="margin-bottom:8px"><h1 style="margin:0;margin-right:auto">First run</h1>{% include "_lang.html" %}</div>
+  <p>Create the <b>master password</b>. It is used to log in and to encrypt all the server passwords.</p>
+  <div class="alert warn">If you forget it, it <b>cannot be recovered</b>: you would have to enter all the credentials again. Keep it in your password manager.</div>
   {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
   <form method="post" action="/setup" class="form">
-    <label for="password">Contraseña maestra (mínimo 10 caracteres)</label>
+    <label for="password">Master password (at least 10 characters)</label>
     <input type="password" id="password" name="password" required minlength="10" autofocus autocomplete="new-password">
-    <label for="password2">Repítela</label>
+    <label for="password2">Repeat it</label>
     <input type="password" id="password2" name="password2" required minlength="10" autocomplete="new-password">
-    <p><button class="primary" type="submit">Crear y entrar</button></p>
+    <p><button class="primary" type="submit">Create and enter</button></p>
   </form>
   {% include "_credit.html" %}
 </div>

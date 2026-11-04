@@ -1,7 +1,7 @@
 <!doctype html>
 {% set P = prefs() %}
 <html lang="{{ get_lang() }}" data-theme="{{ P.theme }}" data-density="{{ P.density }}"
-      {% if P.accent != 'azul' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
+      {% if P.accent != 'blue' %}data-accent style="--accent-custom: {{ P.accent_hex }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,16 +15,16 @@
   <nav class="side">
     <div class="brand"><span class="logo">&gt;_</span> Linux<br><span class="sub">Command Center</span></div>
     {% from "_icons.html" import icon %}
-    <a href="/" class="{{ 'active' if path == '/' }}">{{ icon("layout-dashboard") }}<span>Panel</span></a>
-    <a href="/vms" class="{{ 'active' if path.startswith('/vms') }}">{{ icon("server") }}<span>Inventario</span></a>
-    <a href="/search" class="{{ 'active' if path.startswith('/search') }}">{{ icon("package-search") }}<span>Buscar paquetes</span></a>
-    <a href="/commands" class="{{ 'active' if path.startswith('/commands') or path.startswith('/jobs') }}">{{ icon("square-terminal") }}<span>Ejecución remota</span></a>
-    <a href="/tags" class="{{ 'active' if path.startswith('/tags') }}">{{ icon("tags") }}<span>Clientes y etiquetas</span></a>
-    <a href="/credentials" class="{{ 'active' if path.startswith('/credentials') }}">{{ icon("key-round") }}<span>Credenciales</span></a>
-    <a href="/backup" class="{{ 'active' if path.startswith('/backup') }}">{{ icon("archive") }}<span>Copias de seguridad</span></a>
-    <a href="/audit" class="{{ 'active' if path.startswith('/audit') }}">{{ icon("scroll-text") }}<span>Auditoría</span></a>
-    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">{{ icon("settings") }}<span>Ajustes</span></a>
-    <form method="post" action="/logout"><button type="submit" class="lock-btn">{{ icon("lock") }}<span>Bloquear</span></button></form>
+    <a href="/" class="{{ 'active' if path == '/' }}">{{ icon("layout-dashboard") }}<span>Dashboard</span></a>
+    <a href="/vms" class="{{ 'active' if path.startswith('/vms') }}">{{ icon("server") }}<span>Inventory</span></a>
+    <a href="/search" class="{{ 'active' if path.startswith('/search') }}">{{ icon("package-search") }}<span>Search packages</span></a>
+    <a href="/commands" class="{{ 'active' if path.startswith('/commands') or path.startswith('/jobs') }}">{{ icon("square-terminal") }}<span>Remote execution</span></a>
+    <a href="/tags" class="{{ 'active' if path.startswith('/tags') }}">{{ icon("tags") }}<span>Organizations and tags</span></a>
+    <a href="/credentials" class="{{ 'active' if path.startswith('/credentials') }}">{{ icon("key-round") }}<span>Credentials</span></a>
+    <a href="/backup" class="{{ 'active' if path.startswith('/backup') }}">{{ icon("archive") }}<span>Backups</span></a>
+    <a href="/audit" class="{{ 'active' if path.startswith('/audit') }}">{{ icon("scroll-text") }}<span>Audit log</span></a>
+    <a href="/settings" class="{{ 'active' if path.startswith('/settings') }}">{{ icon("settings") }}<span>Settings</span></a>
+    <form method="post" action="/logout"><button type="submit" class="lock-btn">{{ icon("lock") }}<span>Lock</span></button></form>
     {% include "_lang.html" %}
     {% include "_credit.html" %}
   </nav>
@@ -35,31 +35,32 @@
 </div>
 <dialog id="auth-dlg">
   <form method="dialog" id="auth-form" class="form" style="max-width:none" autocomplete="off">
-    <h2>Credenciales necesarias</h2>
+    <h2>Credentials required</h2>
     <p class="small" id="auth-intro"></p>
     <ul class="small mono" id="auth-list" style="max-height:140px;overflow:auto;margin:0 0 8px"></ul>
-    <div id="auth-user-box"><label>Usuario</label><input name="username" autocomplete="off"></div>
-    <label>Contraseña</label><input type="password" name="password" required autocomplete="new-password">
-    <label>Contraseña sudo <span class="muted">(opcional)</span></label>
-    <input type="password" name="sudo_password" autocomplete="new-password" placeholder="vacío = la misma">
+    <div id="auth-user-box"><label>User</label><input name="username" autocomplete="off"></div>
+    <label>Password</label><input type="password" name="password" required autocomplete="new-password">
+    <label>sudo password <span class="muted">(optional)</span></label>
+    <input type="password" name="sudo_password" autocomplete="new-password" placeholder="empty = the same">
     <label class="inline" style="margin-top:12px"><input type="checkbox" name="remember" value="1">
-      Recordar hasta que bloquee la aplicación (solo en memoria, nunca se guarda)</label>
-    <p class="hint">Se usan para los servidores de la lista. Los que ya tienen usuario o contraseña guardados siguen usando los suyos.</p>
-    <p style="display:flex;gap:8px;margin-bottom:0;flex-wrap:wrap"><button class="primary" type="submit">Continuar</button>
-      <button type="button" id="auth-skip" title="Sigue con el resto de servidores sin estos">Omitir estos servidores y seguir</button>
-      <button type="button" id="auth-cancel">Cancelar</button></p>
+      Remember until I lock the application (memory only, never stored)</label>
+    <p class="hint">They are used for the servers in the list. Those that already have a saved user or password keep using their own.</p>
+    <p style="display:flex;gap:8px;margin-bottom:0;flex-wrap:wrap"><button class="primary" type="submit">Continue</button>
+      <button type="button" id="auth-skip" title="Continue with the other servers without these">Skip these servers and continue</button>
+      <button type="button" id="auth-cancel">Cancel</button></p>
   </form>
 </dialog>
 <dialog id="stepup-dlg">
   <form method="dialog" id="stepup-form" class="form" style="max-width:none" autocomplete="off">
-    <h2>Confirma tu contraseña maestra</h2>
-    <p class="small muted">Esta acción es sensible. Durante 5 minutos no te la volveremos a pedir.</p>
+    <h2>Confirm your master password</h2>
+    <p class="small muted">This is a sensitive action. You won't be asked again for 5 minutes.</p>
     <input type="password" name="password" required autocomplete="off">
-    <p style="display:flex;gap:8px;margin-bottom:0"><button class="primary" type="submit">Confirmar</button>
-      <button type="button" id="stepup-cancel">Cancelar</button></p>
+    <p style="display:flex;gap:8px;margin-bottom:0"><button class="primary" type="submit">Confirm</button>
+      <button type="button" id="stepup-cancel">Cancel</button></p>
   </form>
 </dialog>
 <script>window.I18N = {{ js_i18n()|tojson }};</script>
+<script src="/static/danger.js"></script>
 <script src="/static/app.js"></script>
 {% block scripts %}{% endblock %}
 </body>

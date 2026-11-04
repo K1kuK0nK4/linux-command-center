@@ -1,27 +1,35 @@
-"""Traducción de la interfaz (español por defecto, inglés opcional).
+"""Interface translation (English by default, Spanish optional).
 
-Las pantallas se escriben en español. Con el idioma en inglés, el HTML de cada respuesta pasa por
-translate_html(), que sustituye los textos visibles (y algunos atributos) que estén en el diccionario
-i18n_en.EN. Solo se traduce un texto si coincide entero con una entrada, así que los datos del usuario
-(nombres de VMs, paquetes, salidas de comandos) no se tocan. Las entradas con {marcadores} sirven de
-patrón para textos con partes variables.
+Screens are written in English. When the language is Spanish, the HTML of every response goes
+through translate_html(), which replaces the visible texts (and some attributes) found in
+i18n_es.ES. A text is only translated when it matches an entry completely, so user data (server
+names, packages, command output) is never touched. Entries with {placeholders} are patterns for
+texts with variable parts.
+
 """
 import contextvars
 import html
 import re
 
-from .i18n_en import EN
+from .i18n_es import ES
 
 LANGS = ("es", "en")
-current = contextvars.ContextVar("lang", default="es")
+current = contextvars.ContextVar("lang", default="en")
 
-_EXACT = {k: v for k, v in EN.items() if "{" not in k}
-_PATTERNS = []
-for _k, _v in EN.items():
-    if "{" in _k:
-        rx = re.escape(_k)
-        rx = re.sub(r"\\\{(\w+)\\\}", lambda m: f"(?P<{m.group(1)}>.+?)", rx)
-        _PATTERNS.append((re.compile(f"^{rx}$", re.S), _v))
+
+def _compile(table):
+    exact = {k: v for k, v in table.items() if "{" not in k}
+    patterns = []
+    for k, v in table.items():
+        if "{" in k:
+            rx = re.escape(k)
+            rx = re.sub(r"\\\{(\w+)\\\}", lambda m: f"(?P<{m.group(1)}>.+?)", rx)
+            patterns.append((re.compile(f"^{rx}$", re.S), v))
+    return exact, patterns
+
+
+# Language -> (exact texts, patterns, table for the browser)
+_TABLES = {"es": (*_compile(ES), ES), "en": ({}, [], {})}   # English is the source: nothing to translate
 
 SKIP_TAGS = {"script", "style", "pre", "code", "textarea"}
 TAG_RE = re.compile(r"(<[^>]*>)")
@@ -33,15 +41,16 @@ def get_lang():
 
 
 def translate_text(s):
-    """Traduce un texto completo (sin espacios alrededor) o lo devuelve igual."""
-    if current.get() != "en" or not s:
+    """Translates a whole text (without surrounding spaces) or returns it unchanged."""
+    if not s:
         return s
-    if s in _EXACT:
-        return _EXACT[s]
-    for rx, target in _PATTERNS:
+    exact, patterns, _ = _TABLES.get(current.get(), _TABLES["en"])
+    if s in exact:
+        return exact[s]
+    for rx, target in patterns:
         m = rx.match(s)
         if m:
-            parts = {k: _EXACT.get(v, v) for k, v in m.groupdict().items()}
+            parts = {k: exact.get(v, v) for k, v in m.groupdict().items()}
             return target.format(**parts)
     return s
 
@@ -55,7 +64,7 @@ DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2})(?::\d{2})?)?
 
 
 def format_dates(text, fmt):
-    """Cambia las fechas 'AAAA-MM-DD HH:MM:SS' al formato elegido en Ajustes."""
+    """Changes 'YYYY-MM-DD HH:MM:SS' dates to the format chosen in Settings."""
     if fmt == "iso":
         return text
 
@@ -115,5 +124,5 @@ def translate_html(body, date_fmt="iso"):
 
 
 def js_dict():
-    """Diccionario para el JavaScript del navegador (solo cuando el idioma es inglés)."""
-    return EN if current.get() == "en" else {}
+    """Dictionary for the browser's JavaScript t() in the current language."""
+    return _TABLES.get(current.get(), _TABLES["en"])[2]

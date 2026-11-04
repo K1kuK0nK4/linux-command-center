@@ -1,51 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Qué hace el escaneo · {{ APP_NAME }}{% endblock %}
+{% block title %}What the scan does · {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>¿Qué hace el escaneo?</h1>
-<div class="alert info">Abre <b>una conexión SSH</b> con el usuario del servidor, ejecuta un único script de <b>solo lectura</b>
-  y se desconecta. <b>No instala nada, no escribe ficheros, no descarga nada y no usa sudo (salvo para Docker, ver abajo)</b>.
-  Tarda unos segundos por servidor. Si el usuario no tiene permiso para leer algo, ese dato sale vacío y no da error.</div>
+<h1>What does the scan do?</h1>
+<div class="alert info">It opens <b>one SSH connection</b> with the server's user, runs a single <b>read-only</b>
+  script and disconnects. <b>It installs nothing, writes no files, downloads nothing and does not use sudo (except for Docker, see below)</b>. It takes a few seconds per server. If the user cannot read something, that field is left empty without an error.</div>
 
 <div class="card">
-  <h2>Qué consulta y para qué</h2>
+  <h2>What it queries and why</h2>
   <table>
-    <thead><tr><th>Dato</th><th>Comando</th><th>Dónde lo ves</th></tr></thead>
+    <thead><tr><th>Data</th><th>Command</th><th>Where you see it</th></tr></thead>
     <tbody>
-      <tr><td>Sistema operativo y versión</td><td class="mono small">cat /etc/os-release · cat /etc/redhat-release</td><td>Ficha, Inventario, gráficos</td></tr>
-      <tr><td>Hostname, kernel, arquitectura</td><td class="mono small">hostname · uname -r · uname -m</td><td>Ficha; el kernel también como paquete <code>kernel-running</code></td></tr>
-      <tr><td>Tiempo encendida</td><td class="mono small">cat /proc/uptime</td><td>Ficha</td></tr>
-      <tr><td>Paquetes instalados (Debian/Ubuntu)</td><td class="mono small">dpkg-query -W</td><td>Ficha → Paquetes, Buscar paquetes</td></tr>
-      <tr><td>Paquetes instalados (RHEL)</td><td class="mono small">rpm -qa</td><td>Ficha → Paquetes, Buscar paquetes</td></tr>
-      <tr><td>Paquetes snap</td><td class="mono small">snap list</td><td>Ficha → Paquetes</td></tr>
-      <tr><td>Última actualización (Debian/Ubuntu)</td><td class="mono small">lee /var/log/apt/history.log</td><td>Ficha, Panel</td></tr>
-      <tr><td>Última actualización (RHEL)</td><td class="mono small">fecha de instalación más reciente en rpm</td><td>Ficha, Panel</td></tr>
-      <tr><td>Actualizaciones pendientes</td><td class="mono small">apt list --upgradable · dnf -C check-update</td><td>Inventario, Ficha (según la caché local; <code>-C</code> = sin descargar)</td></tr>
-      <tr><td>Actualizaciones de seguridad</td><td class="mono small">dnf -C updateinfo list --security</td><td>Inventario, Panel</td></tr>
-      <tr><td>¿Necesita reinicio?</td><td class="mono small">existe /var/run/reboot-required · kernel instalado vs en ejecución</td><td>Inventario, Panel</td></tr>
-      <tr><td>Puertos en escucha</td><td class="mono small">ss -tuln (o netstat -tuln)</td><td>Ficha → Puertos</td></tr>
-      <tr><td>Servicios en ejecución</td><td class="mono small">systemctl list-units --type=service --state=running</td><td>Ficha → Servicios</td></tr>
-      <tr><td>Software fuera de paquetes (detección de versiones)</td><td class="mono small">nginx -v · java -version · openssl version…</td><td>Ficha → Paquetes (origen "detección"); editables en Ajustes</td></tr>
-      <tr><td>Contenedores Docker / Podman</td><td class="mono small">docker ps -a · podman ps -a</td><td>Ficha → Contenedores, Inventario</td></tr>
-      <tr><td>SO y paquetes de cada contenedor en marcha</td><td class="mono small">docker exec &lt;id&gt; sh -c '…' (mismo tipo de lectura: os-release, dpkg/rpm/apk, detección de versiones)</td><td>Ficha → Paquetes ("Dónde"), Buscar paquetes</td></tr>
+      <tr><td>Operating system and version</td><td class="mono small">cat /etc/os-release · cat /etc/redhat-release</td><td>Server page, Inventory, charts</td></tr>
+      <tr><td>Hostname, kernel, architecture</td><td class="mono small">hostname · uname -r · uname -m</td><td>Server page; the kernel also as the package <code>kernel-running</code></td></tr>
+      <tr><td>Uptime</td><td class="mono small">cat /proc/uptime</td><td>Server page</td></tr>
+      <tr><td>Installed packages (Debian/Ubuntu)</td><td class="mono small">dpkg-query -W</td><td>Server page → Packages, Search / Affected</td></tr>
+      <tr><td>Installed packages (RHEL)</td><td class="mono small">rpm -qa</td><td>Server page → Packages, Search / Affected</td></tr>
+      <tr><td>Snap packages</td><td class="mono small">snap list</td><td>Server page → Packages</td></tr>
+      <tr><td>Last update (Debian/Ubuntu)</td><td class="mono small">reads /var/log/apt/history.log</td><td>Server page, Dashboard</td></tr>
+      <tr><td>Last update (RHEL)</td><td class="mono small">most recent install date in rpm</td><td>Server page, Dashboard</td></tr>
+      <tr><td>Pending updates</td><td class="mono small">apt list --upgradable · dnf -C check-update</td><td>Inventory, server page (according to the local cache; <code>-C</code> = no download)</td></tr>
+      <tr><td>Security updates</td><td class="mono small">dnf -C updateinfo list --security</td><td>Inventory, Dashboard</td></tr>
+      <tr><td>Reboot needed?</td><td class="mono small">/var/run/reboot-required exists · installed vs running kernel</td><td>Inventory, Dashboard</td></tr>
+      <tr><td>Listening ports</td><td class="mono small">ss -tuln (o netstat -tuln)</td><td>Server page → Ports</td></tr>
+      <tr><td>Running services</td><td class="mono small">systemctl list-units --type=service --state=running</td><td>Server page → Services</td></tr>
+      <tr><td>Software outside packages (version detection)</td><td class="mono small">nginx -v · java -version · openssl version…</td><td>Server page → Packages (source "detection"); editable in Settings</td></tr>
+      <tr><td>Docker / Podman containers</td><td class="mono small">docker ps -a · podman ps -a</td><td>Server page → Containers, Inventory</td></tr>
+      <tr><td>OS and packages of each running container</td><td class="mono small">docker exec &lt;id&gt; sh -c '…' (same kind of reads: os-release, dpkg/rpm/apk, version detection)</td><td>Server page → Packages ("Where"), Search / Affected</td></tr>
     </tbody>
   </table>
-  <p class="hint">Además, la primera vez guarda la <b>huella SSH</b> del servidor. Si cambia, no vuelve a conectar hasta que lo confirmes.
-    Al comparar con el escaneo anterior calcula los <b>cambios de paquetes</b>: instalados, actualizados y eliminados.</p>
+  <p class="hint">Also, the first time it saves the server's <b>SSH fingerprint</b> . If it changes, it will not connect again until you confirm it. By comparing with the previous scan it works out the <b>package changes</b>: installed, updated and removed.</p>
 </div>
 
-<div class="alert warn"><b>Contenedores y sudo:</b> Docker suele necesitar root. Primero se intenta sin sudo (si el usuario
-  está en el grupo <code>docker</code>); si no se puede, se usa <code>sudo</code> (sin contraseña o con la contraseña de sudo del servidor)
-  <b>solo para listar contenedores y leer su inventario</b>. Queda registrado en Auditoría y en el log del servidor.
-  Solo se entra en los contenedores en marcha y nunca se modifica nada dentro.</div>
+<div class="alert warn"><b>Containers and sudo:</b> Docker usually needs root. First it tries without sudo (if the user is in the <code>docker</code>group); if that is not possible, <code>sudo</code> is used (without a password or with the server's sudo password)
+  <b>only to list containers and read their inventory</b>. It is recorded in the Audit log and in the server's log. Only running containers are entered and nothing inside is ever modified.</div>
 
 <div class="card">
-  <h2>Script exacto que se ejecuta en el host</h2>
+  <h2>Exact script run on the host</h2>
   <pre class="out" style="max-height:420px">{{ script }}</pre>
 </div>
 <div class="card">
-  <h2>Script que se ejecuta dentro de cada contenedor en marcha</h2>
+  <h2>Script run inside each running container</h2>
   <pre class="out" style="max-height:420px">{{ container_script }}</pre>
 </div>
-<p class="muted">¿Quieres consultar algo más en todas los servidores? Guárdalo como comando en
-  <a href="/commands">Ejecución remota → Mi biblioteca</a> y lánzalo cuando quieras.</p>
+<p class="muted">Want to query something else on all servers? Save it as a command in
+  <a href="/commands">Remote execution → My library</a> and run it whenever you want.</p>
 {% endblock %}

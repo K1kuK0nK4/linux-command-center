@@ -1,36 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Clientes y etiquetas · {{ APP_NAME }}{% endblock %}
+{% block title %}Organizations and tags · {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Clientes y etiquetas</h1>
-<p class="muted">Clientes, entornos y etiquetas en un solo sitio. Al <b>renombrar</b>, el cambio se aplica a todos sus servidores;
-  al <b>eliminar</b>, los servidores se quedan sin ese valor, pero no se borran.</p>
+<h1>Organizations and tags</h1>
+<p class="muted">Organizations, environments and tags in one place. When you <b>rename</b>, the change applies to all their servers; when you <b>delete</b>, the servers lose that value but are not deleted.</p>
 {% if msg %}<div class="alert ok">{{ msg }}</div>{% endif %}
 
-<div class="grid">
+<div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(420px, 1fr))">
   {% for kind, cat in catalogs.items() %}
   <div class="card" id="{{ kind }}">
     <h2>{{ cat.title }}</h2>
     <form method="post" action="/catalog/{{ kind }}/new" class="filters">
-      <input name="name" placeholder="Nuevo {{ 'cliente' if kind == 'client' else 'entorno' }}" required maxlength="60">
-      <button class="primary" type="submit">+ Añadir</button>
+      <input name="name" placeholder="New {{ 'organization' if kind == 'client' else 'environment' }}" required maxlength="60">
+      <button class="primary" type="submit">+ Add</button>
     </form>
     <table>
-      <thead><tr><th>Nombre</th><th>Servidores</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Servers</th><th></th></tr></thead>
       <tbody>
       {% for name, n in cat['items'] %}
         <tr>
           <td><form method="post" action="/catalog/{{ kind }}/rename" class="filters" style="margin:0;flex-wrap:nowrap">
             <input type="hidden" name="old" value="{{ name }}">
             <input name="name" value="{{ name }}" maxlength="60" style="min-width:0;flex:1">
-            <button type="submit" title="Guardar nombre">Guardar</button></form></td>
+            <button type="submit" title="Save name">Save</button></form></td>
           <td><a href="/vms?{{ kind }}={{ name|urlencode }}">{{ n }}</a></td>
-          <td><form method="post" action="/catalog/{{ kind }}/delete" data-confirm="¿Eliminar '{{ name }}'? {{ n }} servidores quedarán sin {{ 'cliente' if kind == 'client' else 'entorno' }}.">
-            <input type="hidden" name="name" value="{{ name }}"><button class="danger" type="submit">Eliminar</button></form></td>
+          <td><form method="post" action="/catalog/{{ kind }}/delete" data-confirm="Delete '{{ name }}'? {{ n }} servers will be left without {{ 'an organization' if kind == 'client' else 'an environment' }}.">
+            <input type="hidden" name="name" value="{{ name }}"><button class="danger" type="submit">Delete</button></form></td>
         </tr>
       {% else %}
-        <tr><td colspan="3" class="muted">Todavía no hay ninguno.</td></tr>
+        <tr><td colspan="3" class="muted">None yet.</td></tr>
       {% endfor %}
-      {% if cat.none %}<tr><td class="muted">(sin {{ 'cliente' if kind == 'client' else 'entorno' }})</td>
+      {% if cat.none %}<tr><td class="muted">{{ '(no organization)' if kind == 'client' else '(no environment)' }}</td>
         <td><a href="/vms?{{ kind }}=__none__">{{ cat.none }}</a></td><td></td></tr>{% endif %}
       </tbody>
     </table>
@@ -38,32 +37,34 @@
   {% endfor %}
 
   <div class="card" id="tags">
-    <h2>Etiquetas</h2>
+    <h2>Tags</h2>
     <form method="post" action="/tags/new" class="filters">
-      <input name="name" placeholder="Nueva etiqueta" required maxlength="40">
+      <input name="name" placeholder="New tag (e.g. Critical or Vendor:Acme)" required maxlength="60">
       <select name="color">{% for c in colors %}<option value="{{ c }}" style="color:{{ c }}">● color {{ loop.index }}</option>{% endfor %}</select>
-      <button class="primary" type="submit">+ Añadir</button>
+      <button class="primary" type="submit">+ Add</button>
     </form>
     <table>
-      <thead><tr><th>Nombre y color</th><th>Servidores</th><th></th></tr></thead>
+      <thead><tr><th>Name and color</th><th>Servers</th><th></th></tr></thead>
       <tbody>
       {% for t in tags %}
         <tr>
           <td><form method="post" action="/tags/{{ t.id }}/edit" class="filters" style="margin:0;flex-wrap:nowrap">
             <span class="tag" style="--tag: {{ t.color or '#898781' }};padding:0 4px;border:0;background:none"></span>
-            <input name="name" value="{{ t.name }}" maxlength="40" style="min-width:0;flex:1">
+            <input name="name" value="{{ t.name }}" maxlength="60" style="min-width:0;flex:1">
             <select name="color" style="width:auto">{% for c in colors %}<option value="{{ c }}" style="color:{{ c }}" {{ 'selected' if t.color == c }}>● {{ loop.index }}</option>{% endfor %}</select>
-            <button type="submit" title="Guardar">Guardar</button></form></td>
+            <button type="submit" title="Save">Save</button></form></td>
           <td><a href="/vms?tag={{ t.id }}">{{ t.vm_count }}</a></td>
-          <td><form method="post" action="/tags/{{ t.id }}/delete" data-confirm="¿Eliminar la etiqueta {{ t.name }}? Los servidores no se borran.">
-            <button class="danger" type="submit">Eliminar</button></form></td>
+          <td><form method="post" action="/tags/{{ t.id }}/delete" data-confirm="Delete the tag {{ t.name }}? The servers are not deleted.">
+            <button class="danger" type="submit">Delete</button></form></td>
         </tr>
       {% else %}
-        <tr><td colspan="3" class="muted">Todavía no hay etiquetas.</td></tr>
+        <tr><td colspan="3" class="muted">No tags yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
-    <div class="hint">Para etiquetar muchos servidores de golpe: en <a href="/vms">Inventario</a> selecciónalos y usa <i>Etiqueta → + Añadir</i>.</div>
+    <div class="hint">A tag can be simple (<code>Critical</code>) or <b>key:value</b> (<code>Vendor:Acme</code>,
+      <code>Owner:Ana</code>). Key:value tags can be used to group charts (“Tag with key…”).</div>
+    <div class="hint">To tag many servers at once: in <a href="/vms">Inventory</a> select them and use <i>Tag → + Add</i>.</div>
   </div>
 </div>
 {% endblock %}

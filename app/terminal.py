@@ -1,7 +1,7 @@
-"""Terminal web: puente entre el navegador (xterm.js por WebSocket) y una shell SSH.
+"""Web terminal: bridge between the browser (xterm.js over WebSocket) and an SSH shell.
 
-Mensajes del servidor al navegador: binario = salida de la terminal; texto = JSON de control
-({"t": "session", "sid": ...} para el panel de ficheros).
+Server-to-browser messages: binary = terminal output; text = control JSON
+({"t": "session", "sid": ...} for the file panel).
 """
 import asyncio
 import json
@@ -17,8 +17,8 @@ from .ssh import SSHError, connect, sudo_password
 
 USER_RE = re.compile(r"^[a-z_][a-z0-9_.-]{0,31}$")
 PROMPT_RE = re.compile(r"(password|contraseña|passwort|mot de passe)[^\n]*:\s*$", re.I)
-# Terminales abiertas: id de sesión -> {"conn", "vm_id", "vm_name", "since", "become"}.
-# El panel de ficheros (SFTP) reutiliza su conexión SSH, así no hay que volver a autenticarse.
+# Open terminals: session id -> {"conn", "vm_id", "vm_name", "since", "become"}.
+# The file panel (SFTP) reuses its SSH connection, so there is no need to authenticate again.
 ACTIVE = {}
 
 
@@ -32,13 +32,13 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
         await ws.close()
         return
     if become and not USER_RE.match(become):
-        await _say(ws, f"\r\n{_('Usuario no válido')}\r\n")
+        await _say(ws, f"\r\n{_('Invalid user')}\r\n")
         await ws.close()
         return
 
     override = None
     if ssh.needs(vm):
-        # El navegador manda primero {"t": "auth", ...} con lo que el usuario ha tecleado
+        # The browser first sends {"t": "auth", ...} with what the user typed
         try:
             msg = first_msg or json.loads(await asyncio.wait_for(ws.receive_text(), 300))
         except (asyncio.TimeoutError, WebSocketDisconnect, ValueError):
@@ -49,7 +49,7 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
             if msg.get("remember"):
                 ssh.remember(vm_id, override)
 
-    await _say(ws, _("Conectando a {n} ({h})...", n=vm["name"], h=vm["host"]) + "\r\n")
+    await _say(ws, _("Connecting to {n} ({h})...", n=vm["name"], h=vm["host"]) + "\r\n")
     try:
         conn = await connect(vm, override)
     except SSHError as e:
@@ -59,7 +59,9 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
 
     db.audit("terminal_abierta", f"{vm['name']} ({vm['host']})" + (f" sudo su - {become}" if become else ""))
     sid = secrets.token_urlsafe(18)
-    ACTIVE[sid] = {"conn": conn, "vm_id": vm_id, "vm_name": vm["name"], "since": db.now(), "become": become}
+    ACTIVE[sid] = {"conn": conn, "vm_id": vm_id, "vm_name": vm["name"], "since": db.now(), "become": become,
+                   # memory only: used by the file panel in "As root (sudo)" mode
+                   "sudo_password": sudo_password(vm, override)}
     await ws.send_text(json.dumps({"t": "session", "sid": sid}))
     try:
         async with conn:
@@ -84,10 +86,10 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
                             continue
                         tail = (tail + data.decode("utf-8", "replace"))[-200:]
                         if PROMPT_RE.search(tail):
-                            # 1) sudo vacía lo que llegue justo tras mostrar el aviso (TCSAFLUSH): se espera un momento.
-                            # 2) Ctrl+U borra restos ya tecleados en la línea (p. ej. la respuesta automática del
-                            #    navegador cuando la shell pregunta la posición del cursor, "ESC[12;17R").
-                            # 3) En una terminal (PTY) Intro es "\r", no "\n".
+                            # 1) sudo flushes whatever arrives right after showing the prompt (TCSAFLUSH): wait a moment.
+                            # 2) Ctrl+U clears leftovers already typed on the line (e.g. the browser's automatic reply
+                            #    when the shell asks for the cursor position, "ESC[12;17R").
+                            # 3) In a terminal (PTY) Enter is "\r", not "\n".
                             password, pending_password = pending_password, None
                             await asyncio.sleep(0.5)
                             proc.stdin.write(("\x15" + password + "\r").encode())
@@ -115,7 +117,7 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
         ACTIVE.pop(sid, None)
     db.audit("terminal_cerrada", vm["name"])
     try:
-        await _say(ws, f"\r\n\x1b[33m{_('[Sesión cerrada]')}\x1b[0m\r\n")
+        await _say(ws, f"\r\n\x1b[33m{_('[Session closed]')}\x1b[0m\r\n")
         await ws.close()
     except Exception:
         pass

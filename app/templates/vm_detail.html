@@ -3,102 +3,102 @@
 {% block content %}
 <div class="head">
   <h1>{{ vm.name }} <span class="muted small mono">{{ vm.host }}{% if vm.port != 22 %}:{{ vm.port }}{% endif %}</span>
-    {% if jump %}<span class="muted small">vía bastión <a href="/vms/{{ jump.id }}">{{ jump.name }}</a></span>{% endif %}</h1>
+    {% if jump %}<span class="muted small">via bastion <a href="/vms/{{ jump.id }}">{{ jump.name }}</a></span>{% endif %}</h1>
   <span id="scan-status" class="muted"></span>
-  <button class="primary" onclick="startScan({ids:[{{ vm.id }}]})">Escanear ahora</button>
-  <a href="/scan-info" class="small" title="Qué comandos ejecuta el escaneo">¿Qué hace?</a>
+  <button class="primary" onclick="startScan({ids:[{{ vm.id }}]})">Scan now</button>
+  <a href="/scan-info" class="small" title="Which commands the scan runs">What does it do?</a>
   <a class="btn" href="/vms/{{ vm.id }}/terminal" target="_blank">&gt;_ Terminal</a>
-  <a class="btn" href="/vms/{{ vm.id }}/terminal?become=root" target="_blank" title="Abre terminal y ejecuta 'sudo su -' automáticamente">#_ sudo su -</a>
-  <button onclick="const u=prompt(t('¿A qué usuario quieres cambiar con sudo su -?'),'root'); if(u) window.open('/vms/{{ vm.id }}/terminal?become='+encodeURIComponent(u))">sudo su - otro…</button>
-  <a class="btn" href="/commands?ids={{ vm.id }}">Ejecutar</a>
-  <a class="btn" href="/vms/{{ vm.id }}/edit">Editar</a>
+  <a class="btn" href="/vms/{{ vm.id }}/terminal?become=root" target="_blank" title="Opens a terminal and runs &#x27;sudo su -&#x27; automatically">#_ sudo su -</a>
+  <button onclick="const u=prompt(t('Which user do you want to switch to with sudo su -?'),'root'); if(u) window.open('/vms/{{ vm.id }}/terminal?become='+encodeURIComponent(u))">sudo su - other…</button>
+  <a class="btn" href="/commands?ids={{ vm.id }}">Run</a>
+  <a class="btn" href="/vms/{{ vm.id }}/edit">Edit</a>
 </div>
 
 {% if vm.last_scan_status == 'error' %}
-<div class="alert bad"><b>Último escaneo fallido</b> ({{ vm.last_scan_at }}): {{ vm.last_scan_error }}
+<div class="alert bad"><b>Last scan failed</b> ({{ vm.last_scan_at }}): {{ vm.last_scan_error }}
   {% if 'CAMBIADO' in (vm.last_scan_error or '') %}
-  <form method="post" action="/vms/{{ vm.id }}/reset-hostkey" data-confirm="Acepta la nueva clave SOLO si sabes que el servidor se reinstaló o cambió legítimamente. ¿Continuar?" style="margin-top:8px">
-    <button class="danger" type="submit">Aceptar nueva clave del servidor</button></form>
+  <form method="post" action="/vms/{{ vm.id }}/reset-hostkey" data-confirm="Accept the new key ONLY if you know the server was reinstalled or legitimately changed. Continue?" style="margin-top:8px">
+    <button class="danger" type="submit">Accept the server's new key</button></form>
   {% endif %}
 </div>
 {% endif %}
 {% if vm.pending_host_key %}
-<div class="alert warn"><b>Huella SSH pendiente de confirmar:</b> <span class="mono">{{ vm.pending_host_key|fingerprint }}</span>
-  <div class="small">Compárala con la del servidor (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>). Hasta que la aceptes no se envía ninguna credencial.</div>
+<div class="alert warn"><b>SSH fingerprint pending confirmation:</b> <span class="mono">{{ vm.pending_host_key|fingerprint }}</span>
+  <div class="small">Compare it with the server's (<code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code>). No credential is sent until you accept it.</div>
   <div class="filters" style="margin:8px 0 0">
-    <form method="post" action="/vms/{{ vm.id }}/accept-hostkey"><button class="primary" type="submit">Es correcta: aceptar</button></form>
-    <form method="post" action="/vms/{{ vm.id }}/reject-hostkey"><button class="danger" type="submit">Rechazar</button></form>
+    <form method="post" action="/vms/{{ vm.id }}/accept-hostkey"><button class="primary" type="submit">It is correct: accept</button></form>
+    <form method="post" action="/vms/{{ vm.id }}/reject-hostkey"><button class="danger" type="submit">Reject</button></form>
   </div>
 </div>
 {% endif %}
 {% set need = auth_need(vm) %}
-{% if need == 'user' %}<div class="alert info">Este servidor no guarda usuario ni contraseña: se te pedirán al escanear, ejecutar un comando o abrir la terminal.</div>
-{% elif need == 'password' %}<div class="alert info">Este servidor no guarda la contraseña: se te pedirá al escanear, ejecutar un comando o abrir la terminal.</div>{% endif %}
+{% if need == 'user' %}<div class="alert info">This server stores no user or password: you will be asked for them when scanning, running a command or opening the terminal.</div>
+{% elif need == 'password' %}<div class="alert info">This server does not store the password: you will be asked for it when scanning, running a command or opening the terminal.</div>{% endif %}
 
 <div class="grid">
   <div class="card">
-    <h2>Sistema</h2>
+    <h2>System</h2>
     <dl class="info">
       <dt>Hostname</dt><dd>{{ vm.hostname or '—' }}</dd>
-      <dt>Sistema operativo</dt><dd>{{ vm.os_name or '—' }} {{ vm.os_version or '' }}</dd>
-      <dt>Kernel</dt><dd class="mono">{{ vm.kernel or '—' }} {% if vm.reboot_required %}<span class="badge b-warn">requiere reinicio</span>{% endif %}</dd>
-      <dt>Arquitectura</dt><dd>{{ vm.arch or '—' }}</dd>
-      <dt>Tiempo encendido</dt><dd>{{ vm.uptime_s|uptime }}</dd>
+      <dt>Operating system</dt><dd>{{ vm.os_name or '—' }} {{ vm.os_version or '' }}</dd>
+      <dt>Kernel</dt><dd class="mono">{{ vm.kernel or '—' }} {% if vm.reboot_required %}<span class="badge b-warn">reboot required</span>{% endif %}</dd>
+      <dt>Architecture</dt><dd>{{ vm.arch or '—' }}</dd>
+      <dt>Uptime</dt><dd>{{ vm.uptime_s|uptime }}</dd>
       {% set running_containers = containers|selectattr('state', 'equalto', 'running')|list|length %}
-      <dt>Paquetes</dt><dd>{{ vm.pkg_count or '—' }} <span class="muted small">(del host)</span></dd>
-      <dt>Contenedores</dt><dd>{% if vm.container_count is none %}<span class="muted">sin Docker ni Podman</span>
+      <dt>Packages</dt><dd>{{ vm.pkg_count or '—' }} <span class="muted small">(host)</span></dd>
+      <dt>Containers</dt><dd>{% if vm.container_count is none %}<span class="muted">no Docker or Podman</span>
         {% else %}<a href="#containers" onclick="document.querySelector('.tabs a[data-tab=containers]').click()">{{ vm.container_count }}</a>
-        {% if running_containers %}<span class="muted small">({{ running_containers }} en marcha)</span>{% endif %}{% endif %}
+        {% if running_containers %}<span class="muted small">({{ running_containers }} running)</span>{% endif %}{% endif %}
         {% if vm.containers_error %}<div class="small warn">{{ vm.containers_error }}</div>{% endif %}</dd>
-      <dt>Act. pendientes</dt><dd>{% if vm.pending_updates is none %}<span class="muted">desconocido</span>{% else %}{{ vm.pending_updates }}{% if vm.pending_security %} <span class="badge b-bad">{{ vm.pending_security }} de seguridad</span>{% endif %}{% endif %}
-        <div class="hint">Según la caché local de apt/dnf del servidor (no se refresca para no modificar nada).</div></dd>
+      <dt>Pending updates</dt><dd>{% if vm.pending_updates is none %}<span class="muted">unknown</span>{% else %}{{ vm.pending_updates }}{% if vm.pending_security %} <span class="badge b-bad">{{ vm.pending_security }} security</span>{% endif %}{% endif %}
+        <div class="hint">According to the server's local apt/dnf cache (not refreshed, so nothing is modified).</div></dd>
     </dl>
   </div>
   <div class="card">
-    <h2>Escaneos</h2>
+    <h2>Scans</h2>
     <dl class="info">
-      <dt>Última actualización de paquetes</dt><dd class="{{ 'bad' if (vm.last_pkg_update|days_since or 0) > 30 }}">{{ vm.last_pkg_update or '—' }} {% if vm.last_pkg_update %}<span class="muted small">({{ vm.last_pkg_update|ago }})</span>{% endif %}</dd>
-      <dt>Último escaneo correcto</dt><dd>{{ vm.last_ok_at or 'nunca' }} {% if vm.last_ok_at %}<span class="muted small">({{ vm.last_ok_at|ago }})</span>{% endif %}</dd>
-      <dt>Último intento</dt><dd>{{ vm.last_scan_at or 'nunca' }}</dd>
-      <dt>Cliente / entorno</dt><dd>{{ vm.client or '—' }} / {{ vm.environment or '—' }}</dd>
-      <dt>Credencial</dt><dd>{% if vm.cred_own %}<span class="mono">{{ vm.cred_user }}</span> <span class="badge b-info">propia de este servidor</span>
-          <button style="padding:1px 8px" onclick="reveal({{ vm.credential_id }}, this)">Ver</button><code hidden></code>
+      <dt>Last package update</dt><dd class="{{ 'bad' if (vm.last_pkg_update|days_since or 0) > 30 }}">{{ vm.last_pkg_update or '—' }} {% if vm.last_pkg_update %}<span class="muted small">({{ vm.last_pkg_update|ago }})</span>{% endif %}</dd>
+      <dt>Last successful scan</dt><dd>{{ vm.last_ok_at or 'never' }} {% if vm.last_ok_at %}<span class="muted small">({{ vm.last_ok_at|ago }})</span>{% endif %}</dd>
+      <dt>Last attempt</dt><dd>{{ vm.last_scan_at or 'never' }}</dd>
+      <dt>Organization / environment</dt><dd>{{ vm.client or '—' }} / {{ vm.environment or '—' }}</dd>
+      <dt>Credential</dt><dd>{% if vm.cred_own %}<span class="mono">{{ vm.cred_user }}</span> <span class="badge b-info">specific to this server</span>
+          <button style="padding:1px 8px" onclick="reveal({{ vm.credential_id }}, this)">Show</button><code hidden></code>
         {% elif vm.cred_name %}{{ vm.cred_name }} <span class="muted">({{ vm.cred_user }})</span>{% else %}—{% endif %}</dd>
-      <dt>Etiquetas</dt><dd>{% for t in vm_tags %}<a class="tag" style="--tag: {{ t.color or '#898781' }}" href="/vms?tag={{ t.id }}">{{ t.name }}</a>{% else %}—{% endfor %}</dd>
-      <dt>Huella SSH</dt><dd class="mono small">{% if vm.host_key %}<span title="Compárala con la del servidor: ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub">{{ vm.host_key|fingerprint }}</span>
-        {% else %}<span class="muted">se guardará en el primer escaneo</span>{% endif %}</dd>
+      <dt>Tags</dt><dd>{% for t in vm_tags %}<a class="tag" style="--tag: {{ t.color or '#898781' }}" href="/vms?tag={{ t.id }}">{{ t.name|tag_html }}</a>{% else %}—{% endfor %}</dd>
+      <dt>SSH fingerprint</dt><dd class="mono small">{% if vm.host_key %}<span title="Compare it with the server&#x27;s: ssh-keygen -lf /etc/ssh/ssh_host_*_key.pub">{{ vm.host_key|fingerprint }}</span>
+        {% else %}<span class="muted">will be saved on the first scan</span>{% endif %}</dd>
     </dl>
     {% if vm.notes %}<p class="small" style="white-space:pre-wrap">{{ vm.notes }}</p>{% endif %}
   </div>
 </div>
 
 <div class="tabs">
-  <a href="#" data-tab="pkgs" class="active">Paquetes ({{ packages|length }})</a>
-  {% if vm.container_count is not none %}<a href="#" data-tab="containers">Contenedores ({{ containers|length }})</a>{% endif %}
-  <a href="#" data-tab="ports">Puertos ({{ ports|length }})</a>
-  <a href="#" data-tab="services">Servicios ({{ services|length }})</a>
-  <a href="#" data-tab="changes">Cambios ({{ changes|length }})</a>
-  <a href="#" data-tab="history">Historial de escaneos</a>
+  <a href="#" data-tab="pkgs" class="active">Packages ({{ packages|length }})</a>
+  {% if vm.container_count is not none %}<a href="#" data-tab="containers">Containers ({{ containers|length }})</a>{% endif %}
+  <a href="#" data-tab="ports">Ports ({{ ports|length }})</a>
+  <a href="#" data-tab="services">Services ({{ services|length }})</a>
+  <a href="#" data-tab="changes">Changes ({{ changes|length }})</a>
+  <a href="#" data-tab="history">Scan history</a>
 </div>
 
 <div class="tab active" id="tab-pkgs">
-  <div class="filters"><input id="pkg-q" placeholder="Filtrar paquetes...">
+  <div class="filters"><input id="pkg-q" placeholder="Filter packages...">
     {% set places = packages|map(attribute='container')|reject('none')|unique|list %}
     {% if places %}<select id="pkg-where">
-      <option value="">Host y contenedores</option><option value="__host__">Solo el host</option>
+      <option value="">Host and containers</option><option value="__host__">Host only</option>
       {% for c in places %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>{% endif %}</div>
   <div class="table-wrap"><table id="pkg-table">
-    <thead><tr><th class="sortable">Paquete</th><th class="sortable">Versión</th><th class="sortable">Arq.</th><th class="sortable">Origen</th><th class="sortable">Dónde</th></tr></thead>
+    <thead><tr><th class="sortable">Package</th><th class="sortable">Version</th><th class="sortable">Arch.</th><th class="sortable">Source</th><th class="sortable">Where</th></tr></thead>
     <tbody>{% for p in packages %}<tr data-where="{{ p.container or '__host__' }}"><td>{{ p.name }}</td><td class="mono">{{ p.version }}</td><td>{{ p.arch }}</td>
-      <td>{% if p.source == 'sonda' %}<span class="badge b-info" title="Versión obtenida ejecutando el programa (no viene de un paquete)">detección</span>{% else %}{{ p.source }}{% endif %}</td>
+      <td>{% if p.source == 'probe' %}<span class="badge b-info" title="Version obtained by running the program (not from a package)">detection</span>{% else %}{{ p.source }}{% endif %}</td>
       <td>{% if p.container %}<span class="badge b-muted">{{ p.container }}</span>{% else %}<span class="muted">Host</span>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
-  <div class="hint">"detección" = versión obtenida ejecutando el programa (p. ej. <code>nginx -v</code>), útil para software instalado fuera de paquetes.</div>
+  <div class="hint">"detection" = version obtained by running the program (e.g. <code>nginx -v</code>), useful for software installed outside packages.</div>
 </div>
 {% if vm.container_count is not none %}
 <div class="tab" id="tab-containers">
   <div class="table-wrap"><table>
-    <thead><tr><th>Contenedor</th><th>Imagen</th><th>Estado</th><th>SO de la imagen</th><th>Paquetes</th><th>Puertos</th><th></th></tr></thead>
+    <thead><tr><th>Container</th><th>Image</th><th>Status</th><th>Image OS</th><th>Packages</th><th>Ports</th><th></th></tr></thead>
     <tbody>{% for c in containers %}<tr>
       <td><b>{{ c.name }}</b><div class="muted small mono">{{ c.runtime }} · {{ c.cid }}</div></td>
       <td class="mono small">{{ c.image }}</td>
@@ -107,52 +107,51 @@
       <td>{% if c.pkg_count is not none %}<a href="#" class="show-where" data-container="{{ c.name }}">{{ c.pkg_count }}</a>{% else %}—{% endif %}</td>
       <td class="mono small">{{ c.ports or '' }}</td>
       <td class="small warn">{{ c.error or '' }}</td>
-    </tr>{% else %}<tr><td colspan="7" class="muted">Tiene Docker/Podman pero ningún contenedor.</td></tr>{% endfor %}</tbody>
+    </tr>{% else %}<tr><td colspan="7" class="muted">It has Docker/Podman but no containers.</td></tr>{% endfor %}</tbody>
   </table></div>
-  <div class="hint">Solo se inventarían por dentro los contenedores en marcha. Se entra con comandos de solo lectura
-    (sin instalar nada); si Docker requiere root se usa sudo y queda en Auditoría.</div>
+  <div class="hint">Only running containers are inventoried inside. Read-only commands are used (nothing is installed); if Docker requires root, sudo is used and recorded in the Audit log.</div>
 </div>
 {% endif %}
 <div class="tab" id="tab-ports">
   <div class="table-wrap"><table>
-    <thead><tr><th>Protocolo</th><th>Dirección</th><th>Puerto</th></tr></thead>
+    <thead><tr><th>Protocol</th><th>Address</th><th>Port</th></tr></thead>
     <tbody>{% for p in ports %}<tr><td>{{ p.proto }}</td><td class="mono">{{ p.address }}</td><td>{{ p.port }}</td></tr>
-    {% else %}<tr><td colspan="3" class="muted">Sin datos</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="3" class="muted">No data</td></tr>{% endfor %}</tbody>
   </table></div>
-  <div class="hint">Puertos en escucha. Las direcciones 0.0.0.0 / * / :: escuchan en todas las interfaces.</div>
+  <div class="hint">Listening ports. Addresses 0.0.0.0 / * / :: listen on all interfaces.</div>
 </div>
 <div class="tab" id="tab-services">
-  <div class="card"><div class="mono small" style="columns: 3 220px">{% for s in services %}{{ s.name }}<br>{% else %}<span class="muted">Sin datos</span>{% endfor %}</div></div>
+  <div class="card"><div class="mono small" style="columns: 3 220px">{% for s in services %}{{ s.name }}<br>{% else %}<span class="muted">No data</span>{% endfor %}</div></div>
 </div>
 <div class="tab" id="tab-changes">
-  <div class="filters"><input data-filter="#chg-table" placeholder="Filtrar cambios..."></div>
+  <div class="filters"><input data-filter="#chg-table" placeholder="Filter changes..."></div>
   <div class="table-wrap"><table id="chg-table">
-    <thead><tr><th>Detectado</th><th>Paquete</th><th>Cambio</th><th>Antes</th><th>Ahora</th></tr></thead>
+    <thead><tr><th>Detected</th><th>Package</th><th>Change</th><th>Before</th><th>Now</th></tr></thead>
     <tbody>{% for c in changes %}<tr><td class="small">{{ c.finished_at }}</td>
       <td>{{ c.name }}{% if c.container %} <span class="badge b-muted">{{ c.container }}</span>{% endif %}</td>
-      <td><span class="badge {{ 'b-ok' if c.change == 'añadido' else 'b-bad' if c.change == 'eliminado' else 'b-info' }}">{{ c.change }}</span></td>
+      <td><span class="badge {{ 'b-ok' if c.change == 'added' else 'b-bad' if c.change == 'removed' else 'b-info' }}">{{ c.change }}</span></td>
       <td class="mono">{{ c.old_version or '' }}</td><td class="mono">{{ c.new_version or '' }}</td></tr>
-    {% else %}<tr><td colspan="5" class="muted">Sin cambios registrados (se calculan a partir del segundo escaneo).</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="5" class="muted">No changes recorded (they are calculated from the second scan on).</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 <div class="tab" id="tab-history">
   <div class="table-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Estado</th><th>Paquetes</th><th>+ / − / ↑</th><th>Error</th></tr></thead>
+    <thead><tr><th>Date</th><th>Status</th><th>Packages</th><th>+ / − / ↑</th><th>Error</th></tr></thead>
     <tbody>{% for h in history %}<tr><td>{{ h.finished_at }}</td>
       <td><span class="badge st {{ 'b-ok' if h.status == 'ok' else 'b-bad' }}">{{ h.status }}</span></td>
       <td>{{ h.pkg_count or '' }}</td><td>{% if h.status == 'ok' %}{{ h.added or 0 }} / {{ h.removed or 0 }} / {{ h.changed or 0 }}{% endif %}</td>
       <td class="small bad">{{ h.error or '' }}</td></tr>
-    {% else %}<tr><td colspan="5" class="muted">Nunca escaneado</td></tr>{% endfor %}</tbody>
+    {% else %}<tr><td colspan="5" class="muted">Never scanned</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 
-<form method="post" action="/vms/{{ vm.id }}/delete" data-confirm="¿Eliminar {{ vm.name }} y todo su inventario?" style="margin-top:24px">
-  <button class="danger" type="submit">Eliminar servidor</button>
+<form method="post" action="/vms/{{ vm.id }}/delete" data-confirm="Delete {{ vm.name }} and all its inventory?" style="margin-top:24px">
+  <button class="danger" type="submit">Delete server</button>
 </form>
 {% endblock %}
 {% block scripts %}
 <script>
-  // Filtro de paquetes por texto y por dónde están (host o contenedor)
+  // Package filter by text and by location (host or container)
   const pkgQ = document.getElementById("pkg-q"), pkgWhere = document.getElementById("pkg-where");
   function applyPkgFilter() {
     const q = pkgQ.value.toLowerCase(), w = pkgWhere ? pkgWhere.value : "";
@@ -166,7 +165,7 @@
     document.querySelector('.tabs a[data-tab="pkgs"]').click();
     if (pkgWhere) { pkgWhere.value = name; applyPkgFilter(); }
   }
-  // Los nombres vienen del servidor (no son de fiar): se leen de un atributo, nunca se meten en código JS
+  // Names come from the server (not trusted): they are read from an attribute, never put into JS code
   document.querySelectorAll(".show-where").forEach((a) => a.addEventListener("click", (e) => {
     e.preventDefault();
     showWhere(a.dataset.container);

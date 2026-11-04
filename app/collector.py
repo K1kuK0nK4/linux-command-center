@@ -1,10 +1,10 @@
-"""Escaneo de inventario sin agente.
+"""Agentless inventory scan.
 
-1. Host: un único script de solo lectura por SSH (sin sudo, sin instalar nada, sin escribir en el servidor).
-2. Contenedores (Docker/Podman): se listan y, en los que están en marcha, se ejecuta dentro un script
-   de solo lectura para sacar su SO y paquetes. Docker suele necesitar root: se prueba sin sudo y,
-   si no hay permiso, con sudo (sin contraseña o con la contraseña de sudo del servidor).
-3. Sondas: "programa --version" para software instalado fuera de paquetes, en host y contenedores.
+1. Host: a single read-only script run over SSH (no sudo, installs nothing, writes nothing to the server).
+2. Containers (Docker/Podman): they are listed and, for the running ones, a read-only script runs inside
+   to get their OS and packages. Docker usually needs root: it is tried without sudo and,
+   if there is no permission, with sudo (without a password or with the server's sudo password).
+3. Probes: "program --version" for software installed outside packages, on the host and in containers.
 """
 import asyncio
 import json
@@ -55,7 +55,7 @@ sec PORTS; ss -tuln 2>/dev/null || netstat -tuln 2>/dev/null
 sec SERVICES; has systemctl && systemctl list-units --type=service --state=running --no-legend --no-pager --plain 2>/dev/null
 """
 
-# Script que se ejecuta DENTRO de cada contenedor en marcha (solo lectura)
+# Script run INSIDE each running container (read-only)
 CONTAINER_SCRIPT = SCRIPT_HEAD + r"""
 sec OSRELEASE; cat /etc/os-release 2>/dev/null
 if has dpkg-query; then
@@ -69,7 +69,7 @@ fi
 
 RPM_KERNELS = {"kernel", "kernel-core", "kernel-uek", "kernel-uek-core", "kernel-rt-core"}
 
-# Sondas por defecto: (nombre, ejecutable, comando, expresión regular con la versión en el grupo 1)
+# Default probes: (name, executable, command, regular expression with the version in group 1)
 DEFAULT_PROBES = [
     ("nginx", "nginx", "nginx -v", r"nginx/([\w.\-]+)"),
     ("apache httpd", "httpd", "httpd -v", r"Apache/([\w.\-]+)"),
@@ -111,7 +111,7 @@ def active_probes():
 
 
 def probe_block(probes):
-    """Parte del script que lanza las sondas (solo si el programa existe)."""
+    """Part of the script that runs the probes (only if the program exists)."""
     lines = ["sec PROBES"]
     for p in probes:
         lines.append(f"printf '%s\\n' {shlex.quote(PROBE_MARK + p['name'])}")
@@ -128,7 +128,7 @@ def container_script(probes):
 
 
 def parse_probes(lines, probes):
-    """Devuelve [(nombre, versión)] de las sondas que han respondido."""
+    """Returns [(name, version)] for the probes that answered."""
     regex = {p["name"]: p["regex"] for p in probes}
     found, current, buf = [], None, []
 
@@ -172,7 +172,7 @@ def parse_os_release(lines):
 
 
 def parse_package_sections(s):
-    """Paquetes de las secciones DPKG / RPM / APK. Devuelve (familia, [(nombre, versión, arq, origen)])."""
+    """Packages from the DPKG / RPM / APK sections. Returns (family, [(name, version, arch, source)])."""
     packages = []
     if "DPKG" in s:
         for line in s["DPKG"]:
@@ -200,18 +200,33 @@ def parse_package_sections(s):
 def parse_container(out, probes=()):
     s = split_sections(out)
     if "END" not in s:
-        raise SSHError("El script del contenedor no terminó correctamente")
+        raise SSHError("The container script did not finish correctly")
     osr = parse_os_release(s.get("OSRELEASE", []))
     family, packages = parse_package_sections(s)
-    packages += [(name, ver, "", "sonda") for name, ver in parse_probes(s.get("PROBES", []), probes)]
+    packages += [(name, ver, "", "probe") for name, ver in parse_probes(s.get("PROBES", []), probes)]
     return {"os_name": osr.get("NAME", ""), "os_version": osr.get("VERSION_ID", ""), "os_family": family,
             "packages": packages}
+
+
+def script_failure(message, result):
+    """Explains why a remote script stopped early: exit code, last section reached and the end of stderr."""
+    details = []
+    if result.exit_status not in (0, None):
+        details.append(f"exit code {result.exit_status}")
+    if getattr(result, "exit_signal", None):
+        details.append(f"signal {result.exit_signal[0]}")
+    reached = re.findall(re.escape(MARK) + r"\s*(\w+)", result.stdout or "")
+    details.append(f"last step: {reached[-1]}" if reached else "no output (restricted shell or /bin/sh not available?)")
+    stderr = " | ".join(line.strip() for line in (result.stderr or "").strip().splitlines()[-3:] if line.strip())
+    if stderr:
+        details.append(f"server said: {stderr[:300]}")
+    return f"{message} ({'; '.join(details)})"
 
 
 def parse(out, probes=()):
     s = split_sections(out)
     if "END" not in s:
-        raise SSHError("El script de inventario no terminó correctamente")
+        raise SSHError("The inventory script did not finish correctly")
     first = lambda key: next((l.strip() for l in s.get(key, []) if l.strip()), "")
 
     info = {"hostname": first("HOSTNAME"), "kernel": first("KERNEL"), "arch": first("ARCH")}
@@ -290,7 +305,7 @@ def parse(out, probes=()):
 
     if info["kernel"]:
         packages.append(("kernel-running", info["kernel"], info["arch"], "kernel"))
-    packages += [(name, ver, "", "sonda") for name, ver in parse_probes(s.get("PROBES", []), probes)]
+    packages += [(name, ver, "", "probe") for name, ver in parse_probes(s.get("PROBES", []), probes)]
 
     ports = set()
     for line in s.get("PORTS", []):
@@ -344,7 +359,7 @@ def _parse_rpm_security(lines):
 
 
 def save(vm_id, started_at, info, packages, ports, services, containers=None, containers_error=None):
-    """packages: paquetes del host [(nombre, versión, arq, origen)]; containers: [{..., "packages": [...]}]."""
+    """packages: host packages [(name, version, arch, source)]; containers: [{..., "packages": [...]}]."""
     rows = [(n, v, a, src, None) for n, v, a, src in packages]
     for ct in containers or []:
         rows += [(n, v, a, src, ct["name"]) for n, v, a, src in ct.get("packages", [])]
@@ -355,15 +370,15 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
     if old:
         for k, v in new.items():
             if k not in old:
-                changes.append((k[0], None, v, "añadido", k[3]))
+                changes.append((k[0], None, v, "added", k[3]))
             elif old[k] != v:
-                changes.append((k[0], old[k], v, "actualizado", k[3]))
+                changes.append((k[0], old[k], v, "updated", k[3]))
         for k, v in old.items():
             if k not in new:
-                changes.append((k[0], v, None, "eliminado", k[3]))
+                changes.append((k[0], v, None, "removed", k[3]))
 
     ts = db.now()
-    count = sum(1 for p in packages if p[3] not in ("kernel", "sonda"))
+    count = sum(1 for p in packages if p[3] not in ("kernel", "probe"))
     with db.tx() as c:
         c.execute("DELETE FROM packages WHERE vm_id=?", (vm_id,))
         c.executemany("INSERT INTO packages(vm_id, name, version, arch, source, container) VALUES(?,?,?,?,?,?)",
@@ -373,7 +388,7 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
                          os_version, os_family, pkg_count, error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       [(vm_id, ct["runtime"], ct["cid"], ct["name"], ct["image"], ct["state"], ct["status"],
                         ct["ports"], ct.get("os_name"), ct.get("os_version"), ct.get("os_family"),
-                        len([p for p in ct.get("packages", []) if p[3] != "sonda"]) if ct.get("packages") else None,
+                        len([p for p in ct.get("packages", []) if p[3] != "probe"]) if ct.get("packages") else None,
                         ct.get("error")) for ct in containers or []])
         c.execute("UPDATE vms SET container_count=?, containers_error=? WHERE id=?",
                   (len(containers) if containers is not None else None, containers_error, vm_id))
@@ -393,9 +408,9 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
         scan_id = c.execute("""INSERT INTO scan_history(vm_id, started_at, finished_at, status, pkg_count,
                                added, removed, changed) VALUES(?,?,?,?,?,?,?,?)""",
                             (vm_id, started_at, ts, "ok", count,
-                             sum(1 for ch in changes if ch[3] == "añadido"),
-                             sum(1 for ch in changes if ch[3] == "eliminado"),
-                             sum(1 for ch in changes if ch[3] == "actualizado"))).lastrowid
+                             sum(1 for ch in changes if ch[3] == "added"),
+                             sum(1 for ch in changes if ch[3] == "removed"),
+                             sum(1 for ch in changes if ch[3] == "updated"))).lastrowid
         c.executemany("INSERT INTO package_changes(scan_id, vm_id, name, old_version, new_version, change, container) "
                       "VALUES(?,?,?,?,?,?,?)", [(scan_id, vm_id, *ch) for ch in changes])
     db.bump()
@@ -412,7 +427,7 @@ def save_error(vm_id, started_at, error):
 
 
 def parse_ps(runtime, out):
-    """Docker devuelve una línea JSON por contenedor; Podman, un array JSON."""
+    """Docker returns one JSON line per container; Podman, a JSON array."""
     text = (out or "").strip()
     if not text:
         return []
@@ -435,9 +450,9 @@ def parse_ps(runtime, out):
 
 
 async def _runtime_access(conn, runtime, vm, override):
-    """Cómo hablar con Docker/Podman: sin sudo, con sudo sin contraseña o con la contraseña de sudo.
+    """How to talk to Docker/Podman: without sudo, with passwordless sudo, or with the sudo password.
 
-    Devuelve (prefijo, entrada estándar) o (None, None) si no hay permiso.
+    Returns (prefix, stdin) or (None, None) if there is no permission.
     """
     r = await conn.run(f"{runtime} ps -q", check=False, timeout=30)
     if r.exit_status == 0:
@@ -457,7 +472,7 @@ async def _runtime_access(conn, runtime, vm, override):
 
 
 async def scan_containers(conn, vm, override, probes):
-    """Devuelve (contenedores, error). contenedores = None si el servidor no tiene Docker ni Podman."""
+    """Returns (containers, error). containers = None if the server has neither Docker nor Podman."""
     r = await conn.run("for r in docker podman; do command -v $r >/dev/null 2>&1 && echo $r; done",
                        check=False, timeout=20)
     runtimes = [l.strip() for l in (r.stdout or "").splitlines() if l.strip() in ("docker", "podman")]
@@ -468,11 +483,11 @@ async def scan_containers(conn, vm, override, probes):
     for rt in runtimes:
         prefix, stdin = await _runtime_access(conn, rt, vm, override)
         if prefix is None:
-            errors.append(f"{rt}: sin permiso (el usuario no está en el grupo {rt} y sudo no funciona) "
-                          "o el servicio no está arrancado")
+            errors.append(f"{rt}: no permission (the user is not in the {rt} group and sudo does not work) "
+                          "or the service is not running")
             continue
         if prefix:
-            db.audit("contenedores_sudo", f"{vm['name']}: {rt} con sudo (solo lectura)")
+            db.audit("contenedores_sudo", f"{vm['name']}: {rt} with sudo (read-only)")
         fmt = "--format json" if rt == "podman" else "--format '{{json .}}'"
         ps = await conn.run(f"{prefix}{rt} ps -a --no-trunc {fmt}", input=stdin, check=False, timeout=60,
                             encoding="utf-8", errors="replace")
@@ -483,23 +498,23 @@ async def scan_containers(conn, vm, override, probes):
         try:
             items = parse_ps(rt, ps.stdout)
         except ValueError:
-            errors.append(f"{rt}: no se entiende la salida de '{rt} ps'")
+            errors.append(f"{rt}: could not understand the output of '{rt} ps'")
             continue
         if len(items) > MAX_CONTAINERS:
-            errors.append(f"{rt}: solo se inventarían los primeros {MAX_CONTAINERS} contenedores")
+            errors.append(f"{rt}: only the first {MAX_CONTAINERS} containers are inventoried")
         for ct in items[:MAX_CONTAINERS]:
             if ct["state"] != "running":
-                ct["error"] = "Parado: solo se inventarían los contenedores en marcha"
+                ct["error"] = "Stopped: only running containers are inventoried"
                 continue
             try:
                 ex = await conn.run(f"{prefix}{rt} exec {shlex.quote(ct['cid'])} sh -c {shlex.quote(script)}",
                                     input=stdin, check=False, timeout=90, encoding="utf-8", errors="replace")
                 if MARK + "END" not in (ex.stdout or ""):
-                    ct["error"] = "No se pudo inspeccionar (¿imagen sin shell, tipo distroless?)"
+                    ct["error"] = "Could not inspect it (image without a shell, e.g. distroless?)"
                 else:
                     ct.update(parse_container(ex.stdout, probes))
             except (asyncio.TimeoutError, TimeoutError):
-                ct["error"] = "Tiempo agotado al inspeccionar el contenedor"
+                ct["error"] = "Timed out while inspecting the container"
         containers += items[:MAX_CONTAINERS]
     return containers, "; ".join(errors) or None
 
@@ -514,22 +529,24 @@ async def scan_vm(vm_id, override=None):
         async with await connect(vm, override) as conn:
             result = await conn.run("/bin/sh -s", input=host_script(probes), check=False, timeout=180,
                                     encoding="utf-8", errors="replace")
+            if MARK + "END" not in (result.stdout or ""):
+                raise SSHError(script_failure("The inventory script did not finish correctly", result))
             info, packages, ports, services = parse(result.stdout or "", probes)
-            # Un fallo con los contenedores no estropea el inventario del host
+            # A failure with the containers does not spoil the host inventory
             try:
                 containers, containers_error = await scan_containers(conn, vm, override, probes)
             except Exception as e:
-                containers, containers_error = [], f"Error al revisar contenedores: {type(e).__name__}: {e}"
+                containers, containers_error = [], f"Error while checking containers: {type(e).__name__}: {e}"
         save(vm_id, started, info, packages, ports, services, containers, containers_error)
     except SSHError as e:
         save_error(vm_id, started, str(e))
     except (asyncio.TimeoutError, TimeoutError):
-        save_error(vm_id, started, "El escaneo tardó más de 3 minutos")
+        save_error(vm_id, started, "The scan took more than 3 minutes")
     except Exception as e:
         save_error(vm_id, started, f"{type(e).__name__}: {e}")
 
 
-# ---------- cola de escaneos ----------
+# ---------- scan queue ----------
 
 running = {}
 _tasks = set()
@@ -555,7 +572,7 @@ async def _scan_task(vm_id, override):
 
 
 def start_scans(vm_ids, overrides=None):
-    """overrides: {vm_id: {username, password, sudo_password}} tecleados al lanzar (no se guardan)."""
+    """overrides: {vm_id: {username, password, sudo_password}} typed when launching (not stored)."""
     started = 0
     for vm_id in vm_ids:
         if vm_id in running:

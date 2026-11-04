@@ -1,70 +1,64 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Buscar paquetes / servidores afectados</h1>
+<h1>Search packages / affected servers</h1>
 <div class="card">
 <form method="get" autocomplete="off">
   <div class="search-form">
-    <div><label for="pkg">Paquete</label>
+    <div><label for="pkg">Package</label>
       <input name="pkg" id="pkg" list="pkg-suggest" value="{{ p.pkg or '' }}" placeholder="openssl, openssh-server, kernel-running..." required>
       <datalist id="pkg-suggest"></datalist></div>
-    <div><label>Condición</label>
+    <div><label>Condition</label>
       <select name="op">
-        <option value="">cualquiera</option>
+        <option value="">any</option>
         {% for o in ['<', '<=', '=', '>=', '>'] %}<option value="{{ o }}" {{ 'selected' if p.op == o }}>{{ o }}</option>{% endfor %}
       </select></div>
-    <div><label>Versión</label><input name="ver" value="{{ p.ver or '' }}" placeholder="3.0.7-27.el9 / 1:9.6p1-3ubuntu13.5"></div>
+    <div><label>Version</label><input name="ver" value="{{ p.ver or '' }}" placeholder="3.0.7-27.el9 / 1:9.6p1-3ubuntu13.5"></div>
     {% from "_multi.html" import multi %}
-    <div><label>Cliente</label>{{ multi("client", "Todos", [("__none__", "(sin cliente)")] + zip_pairs(clients), p.client) }}</div>
-    <div><label>Entorno</label>{{ multi("environment", "Todos", [("__none__", "(sin entorno)")] + zip_pairs(envs), p.environment) }}</div>
-    <div><label>Etiqueta</label>{{ multi("tag", "Todas", tag_options(tags), p.tag) }}</div>
-    <div><label>Familia</label>{{ multi("os_family", "Todas", family_options(True), p.os_family) }}</div>
-    <div><label>Distribución</label>{{ multi("os_name", "Todas", distro_options(True), p.os_name) }}</div>
-    <div><button class="primary" type="submit">Buscar</button></div>
+    <div><label>Organization</label>{{ multi("client", "All", [("__none__", "(no organization)")] + zip_pairs(clients), p.client) }}</div>
+    <div><label>Environment</label>{{ multi("environment", "All", [("__none__", "(no environment)")] + zip_pairs(envs), p.environment) }}</div>
+    <div><label>Tag</label>{{ multi("tag", "All", tag_options(tags), p.tag) }}</div>
+    <div><label>Distribution</label>{{ multi("os_name", "All", distro_options(True), p.os_name) }}</div>
+    <div><button class="primary" type="submit">Search</button></div>
   </div>
   <div class="filters" style="margin:10px 0 0">
-    <label class="inline"><input type="checkbox" name="exact" value="1" {{ 'checked' if p.exact }}> Nombre exacto del paquete</label>
-    <span class="muted" style="margin-left:14px">Dónde:</span>
+    <label class="inline"><input type="checkbox" name="exact" value="1" {{ 'checked' if p.exact }}> Exact package name</label>
+    <span class="muted" style="margin-left:14px">Where:</span>
     <div class="seg">
-      <label><input type="radio" name="where" value="" {{ 'checked' if not p.where }}> Host y contenedores</label>
-      <label><input type="radio" name="where" value="host" {{ 'checked' if p.where == 'host' }}> Solo host</label>
-      <label><input type="radio" name="where" value="containers" {{ 'checked' if p.where == 'containers' }}> Solo contenedores</label>
+      <label><input type="radio" name="where" value="" {{ 'checked' if not p.where }}> Host and containers</label>
+      <label><input type="radio" name="where" value="host" {{ 'checked' if p.where == 'host' }}> Host only</label>
+      <label><input type="radio" name="where" value="containers" {{ 'checked' if p.where == 'containers' }}> Containers only</label>
     </div>
   </div>
 </form>
 <details class="hint" style="margin-top:10px">
-  <summary>Cómo saber qué servidores están afectados por un CVE</summary>
-  <p>Busca el paquete con la condición <b>&lt;</b> y la <b>versión corregida</b> que publica el fabricante de cada distribución
-    (Red Hat: <i>access.redhat.com/security/cve/CVE-…</i>, Ubuntu: <i>ubuntu.com/security/CVE-…</i>, Debian: <i>security-tracker.debian.org</i>).</p>
-  <p>RHEL y Ubuntu <b>parchean sin subir la versión principal</b> (backporting): compara siempre con la versión del fabricante
-    (p.ej. <code>3.0.7-27.el9</code>), no con la versión "upstream" del CVE. Como cada distro tiene su versión corregida,
-    filtra por familia y haz una búsqueda por cada una.</p>
-  <p>El kernel en ejecución aparece como paquete <code>kernel-running</code>.</p>
-  <p>Los paquetes de dentro de los contenedores aparecen marcados con el nombre del contenedor y su imagen; se comparan
-    con la distribución de la imagen (no la del host). <b>detección</b> = versión obtenida ejecutando el programa
-    (p. ej. <code>nginx -v</code>), para software instalado fuera de paquetes.</p>
+  <summary>How to find which servers are affected by a CVE</summary>
+  <p>Search for the package with the condition <b>&lt;</b> and the <b>fixed version</b> published by each distribution's vendor (Red Hat: <i>access.redhat.com/security/cve/CVE-…</i>, Ubuntu: <i>ubuntu.com/security/CVE-…</i>, Debian: <i>security-tracker.debian.org</i>).</p>
+  <p>RHEL and Ubuntu <b>patch without bumping the main version</b> (backporting): always compare with the vendor's version (e.g. <code>3.0.7-27.el9</code>), not with the CVE's "upstream" version. Since each distro has its own fixed version, filter by family and run one search for each.</p>
+  <p>The running kernel appears as the package <code>kernel-running</code>.</p>
+  <p>Packages inside containers are marked with the container name and its image; they are compared using the image's distribution (not the host's). <b>detection</b> = version obtained by running the program (e.g. <code>nginx -v</code>), for software installed outside packages.</p>
 </details>
 </div>
 
 {% if results is not none %}
 <div class="head">
-  <h2 style="margin:0;margin-right:auto">{{ results|length }} paquetes encontrados en <b>{{ affected }}</b> servidores</h2>
+  <h2 style="margin:0;margin-right:auto">{{ results|length }} packages found in <b>{{ affected }}</b> servers</h2>
   {% if results %}
-  <button onclick="location.href='/commands?ids={{ results|map(attribute='vm_id')|unique|join(',') }}'">Ejecutar en estos servidores</button>
-  <a class="btn" href="/search.csv?{{ qs }}">Exportar CSV</a>
+  <button onclick="location.href='/commands?ids={{ results|map(attribute='vm_id')|unique|join(',') }}'">Run on these servers</button>
+  <a class="btn" href="/search.csv?{{ qs }}">Export CSV</a>
   {% endif %}
 </div>
 {% if results %}
-<div class="filters"><input data-filter="#res-table" placeholder="Filtrar resultados..."></div>
+<div class="filters"><input data-filter="#res-table" placeholder="Filter results..."></div>
 <div class="table-wrap"><table id="res-table">
-  <thead><tr><th class="sortable">Servidor</th><th class="sortable">Cliente</th><th class="sortable">Dónde</th><th class="sortable">SO</th><th class="sortable">Paquete</th>
-    <th class="sortable">Versión instalada</th><th class="sortable">Arq.</th><th class="sortable">Último escaneo</th></tr></thead>
+  <thead><tr><th class="sortable">Server</th><th class="sortable">Organization</th><th class="sortable">Where</th><th class="sortable">OS</th><th class="sortable">Package</th>
+    <th class="sortable">Installed version</th><th class="sortable">Arch.</th><th class="sortable">Last scan</th></tr></thead>
   <tbody>{% for r in results %}<tr>
     <td><a href="/vms/{{ r.vm_id }}">{{ r.vm_name }}</a><div class="muted small mono">{{ r.host }}</div></td>
     <td>{{ r.client or '' }}{% if r.environment %} <span class="muted small">{{ r.environment }}</span>{% endif %}</td>
     <td>{% if r.container %}<span class="badge b-muted">{{ r.container }}</span><div class="muted small mono">{{ r.image }}</div>
       {% else %}<span class="muted">Host</span>{% endif %}</td>
     <td>{{ r.os_name or '' }} {{ r.os_version or '' }}</td>
-    <td>{{ r.name }}{% if r.source == 'sonda' %} <span class="badge b-info" title="Versión obtenida ejecutando el programa">detección</span>{% endif %}</td>
+    <td>{{ r.name }}{% if r.source == 'probe' %} <span class="badge b-info" title="Version obtained by running the program">detection</span>{% endif %}</td>
     <td class="mono">{{ r.version }}</td><td>{{ r.arch }}</td><td class="small">{{ r.last_ok_at|ago }}</td>
   </tr>{% endfor %}</tbody>
 </table></div>

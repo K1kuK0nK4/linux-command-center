@@ -7,14 +7,25 @@
   <style>
     html, body { margin: 0; height: 100%; background: #0d1016; color: #c9d1e3; font: 13px system-ui, sans-serif; }
     a { color: #8fb4ff; }
-    .bar { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: #1b2233; height: 22px; }
+    .bar { display: flex; gap: 12px; align-items: center; padding: 6px 12px; background: #1b2233; height: 22px;
+      white-space: nowrap; overflow: hidden; }
+    .bar .dim { color: #8d96a9; font-size: 12px; } .bar .mono { font-family: Consolas, monospace; font-size: 12px; }
+    .bar .tag { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px; border-radius: 10px; font-size: 11.5px;
+      border: 1px solid #3a4459; background: #222835; }
+    .bar .tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--tag); }
+    .bar .tag .tk { padding: 0 5px; background: #3a4459; color: #c9d1e3; border-radius: 4px; font-size: 10.5px;
+      font-weight: 600; text-transform: uppercase; }
     .bar b { color: #fff; } .bar .root { color: #f07163; font-weight: 700; }
     .bar .safe { color: #4cc380; font-size: 12px; }
     .bar button { background: #2a3245; color: #e3e7ef; border: 1px solid #3a4459; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; }
     .bar button.on { background: #5b8ff0; border-color: #5b8ff0; color: #fff; }
     .wrap { position: absolute; top: 34px; left: 0; right: 0; bottom: 0; display: flex; }
     #term { flex: 1; min-width: 0; padding: 4px; }
-    #files { width: 380px; border-left: 1px solid #2d3443; background: #12151c; display: flex; flex-direction: column; }
+    #files { width: 380px; order: -1; border-right: 1px solid #2d3443; background: #12151c; display: flex; flex-direction: column; }
+    #files .goto { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #2d3443; }
+    #files .goto input { flex: 1; min-width: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid #3a4459; background: #0d1016;
+      color: #e3e7ef; font: 12px Consolas, monospace; }
+    #files .goto button { background: #2a3245; color: #e3e7ef; border: 1px solid #3a4459; border-radius: 6px; padding: 3px 10px; cursor: pointer; font: inherit; font-size: 12px; }
     #files[hidden] { display: none; }
     #files .tools { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid #2d3443; flex-wrap: wrap; }
     #files .tools button, #files .row button { background: #2a3245; color: #e3e7ef; border: 1px solid #3a4459; border-radius: 6px; padding: 3px 8px; cursor: pointer; font: inherit; font-size: 12px; }
@@ -29,6 +40,9 @@
     #files .msg { padding: 8px; font-size: 12px; }
     #files .msg.bad { color: #f07163; } #files .msg.ok { color: #4cc380; }
     #files.drop { outline: 2px dashed #5b8ff0; outline-offset: -6px; }
+    #files .root-toggle { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #c9d1e3; cursor: pointer; }
+    #files.root { box-shadow: inset 3px 0 0 #f07163; }          /* visual warning: you are root */
+    #files.root .path { color: #f07163; }
     #files .hint { color: #8d96a9; font-size: 11.5px; padding: 6px 8px; border-top: 1px solid #2d3443; }
     #auth { position: absolute; inset: 34px 0 0 0; display: flex; align-items: center; justify-content: center; z-index: 5; background: #0d1016; }
     #auth form { background: #1a1f29; border: 1px solid #2d3443; border-radius: 10px; padding: 22px; width: min(380px, 90vw); }
@@ -48,58 +62,66 @@
 </head>
 <body>
 <div class="bar">
-  <b>{{ vm.name }}</b> <span>{{ vm.host }}</span>
+  <button id="files-btn" disabled title="{{ _('Server files (SFTP)') }}">{{ _('Files') }}</button>
+  <b>{{ vm.name }}</b> <span class="mono">{{ vm.host }}{% if vm.port != 22 %}:{{ vm.port }}{% endif %}</span>
+  {% if vm.client or vm.environment %}<span class="dim">{{ vm.client or '' }}{% if vm.client and vm.environment %} · {% endif %}{{ vm.environment or '' }}</span>{% endif %}
+  {% if vm.os_name %}<span class="dim">{{ vm.os_name }} {{ vm.os_version or '' }}</span>{% endif %}
+  {% for t in vm_tags %}<span class="tag" style="--tag: {{ t.color or '#898781' }}">{{ t.name|tag_html }}</span>{% endfor %}
   {% if become %}<span class="root">sudo su - {{ become }}</span>{% endif %}
-  {% if safe %}<span class="safe" title="{{ _('Pide confirmación antes de reiniciar, apagar o comandos peligrosos') }}">{{ _('Modo seguro') }}</span>{% endif %}
-  <span style="margin-left:auto;color:#8d96a9">{{ _('Copiar: seleccionar · Pegar: Ctrl+Shift+V / clic derecho') }}</span>
-  <button id="files-btn" disabled title="{{ _('Ficheros del servidor (SFTP)') }}">{{ _('Ficheros') }}</button>
+  {% if safe %}<span class="safe" title="{{ _('Asks for confirmation before reboots, shutdowns or dangerous commands') }}">{{ _('Safe mode') }}</span>{% endif %}
+  <span class="dim" style="margin-left:auto">{{ _('Copy: select · Paste: Ctrl+Shift+V / right click') }}</span>
 </div>
 <div class="wrap">
   <div id="term"></div>
   <div id="files" hidden>
     <div class="tools">
-      <button id="f-home" title="{{ _('Carpeta personal') }}">{{ _('Inicio') }}</button>
-      <button id="f-up" title="{{ _('Subir un nivel') }}">{{ _('Arriba') }}</button>
-      <button id="f-refresh" title="{{ _('Actualizar') }}">{{ _('Actualizar') }}</button>
-      <button id="f-mkdir">＋ {{ _('Carpeta') }}</button>
-      <button id="f-upload">{{ _('Subir ficheros') }}</button>
+      <button id="f-home" title="{{ _('Home folder') }}">{{ _('Home') }}</button>
+      <button id="f-up" title="{{ _('Up one level') }}">{{ _('Up') }}</button>
+      <button id="f-refresh" title="{{ _('Refresh') }}">{{ _('Refresh') }}</button>
+      <button id="f-mkdir">+ {{ _('Folder') }}</button>
+      <button id="f-upload">{{ _('Upload files') }}</button>
       <input type="file" id="f-input" multiple hidden>
     </div>
+    <form class="goto" id="f-go" autocomplete="off">
+      <input id="f-goto" placeholder="/var/log" spellcheck="false" title="{{ _('Type a path and press Enter') }}">
+      <button type="submit">{{ _('Go') }}</button>
+    </form>
     <div class="path" id="f-path"></div>
     <div class="list" id="f-list"></div>
     <div class="msg" id="f-msg"></div>
-    <div class="hint">{{ _('Arrastra ficheros aquí para subirlos. Se usa el usuario con el que entraste por SSH (no el de sudo su).') }}
-      {% if safe %}{{ _('Modo seguro: no se puede borrar ni sobrescribir.') }}{% endif %}</div>
+    <div class="hint">{% if become == 'root' %}{{ _('Drag files here to upload them. Like this terminal, files are handled as root (sudo).') }}{% else %}{{ _('Drag files here to upload them. The user you logged in with via SSH is used (not the sudo su one).') }}{% endif %}
+      {% if safe %}{{ _('Safe mode: deleting and overwriting are disabled.') }}{% endif %}</div>
   </div>
 </div>
 {% if need or stepup %}
 <div id="auth">
   <form id="auth-form" autocomplete="off">
     {% if stepup %}
-    <h2>{% if become %}{{ _('Terminal como') }} {{ become }}{% else %}{{ _('Terminal') }}{% endif %}</h2>
-    <div class="muted">{{ _('Confirma tu contraseña maestra (no te la volveremos a pedir en 5 minutos).') }}</div>
-    <label>{{ _('Contraseña maestra') }}</label><input type="password" name="master_password" required autofocus>
+    <h2>{% if become %}{{ _('Terminal as') }} {{ become }}{% else %}{{ _('Terminal') }}{% endif %}</h2>
+    <div class="muted">{{ _("Confirm your master password (you won't be asked again for 5 minutes).") }}</div>
+    <label>{{ _('Master password') }}</label><input type="password" name="master_password" required autofocus>
     {% endif %}
     {% if need %}
-    <h2 {% if stepup %}style="margin-top:16px"{% endif %}>{{ _('Credenciales necesarias') }}</h2>
-    <div class="muted">{{ _('Este servidor no las tiene guardadas.') }}</div>
-    {% if need == 'user' %}<label>{{ _('Usuario') }}</label><input name="username" required {{ 'autofocus' if not stepup }}>{% endif %}
-    <label>{{ _('Contraseña') }}</label><input type="password" name="password" required {{ 'autofocus' if need != 'user' and not stepup }}>
-    {% if become %}<label>{{ _('Contraseña sudo') }} <span class="muted">({{ _('opcional') }})</span></label><input type="password" name="sudo_password">{% endif %}
-    <label class="inline"><input type="checkbox" name="remember" value="1"> {{ _('Recordar hasta que bloquee la aplicación') }}</label>
+    <h2 {% if stepup %}style="margin-top:16px"{% endif %}>{{ _('Credentials required') }}</h2>
+    <div class="muted">{{ _('This server does not have them saved.') }}</div>
+    {% if need == 'user' %}<label>{{ _('User') }}</label><input name="username" required {{ 'autofocus' if not stepup }}>{% endif %}
+    <label>{{ _('Password') }}</label><input type="password" name="password" required {{ 'autofocus' if need != 'user' and not stepup }}>
+    {% if become %}<label>{{ _('sudo password') }} <span class="muted">({{ _('optional') }})</span></label><input type="password" name="sudo_password">{% endif %}
+    <label class="inline"><input type="checkbox" name="remember" value="1"> {{ _('Remember until I lock the application') }}</label>
     {% endif %}
-    <button type="submit">{{ _('Conectar') }}</button>
+    <button type="submit">{{ _('Connect') }}</button>
   </form>
 </div>
 {% endif %}
 <dialog id="mp-dlg">
   <form id="mp-form" method="dialog" autocomplete="off">
-    <h2>{{ _('Contraseña maestra') }}</h2>
-    <div class="muted">{{ _('Confirma tu contraseña maestra para modificar ficheros (no te la volveremos a pedir en 5 minutos).') }}</div>
+    <h2>{{ _('Master password') }}</h2>
+    <div class="muted">{{ _("Confirm your master password to change files (you won't be asked again for 5 minutes).") }}</div>
     <input type="password" name="password" required>
-    <button type="submit">{{ _('Confirmar') }}</button> <button type="button" id="mp-cancel" class="sec">{{ _('Cancelar') }}</button>
+    <button type="submit">{{ _('Confirm') }}</button> <button type="button" id="mp-cancel" class="sec">{{ _('Cancel') }}</button>
   </form>
 </dialog>
+<script src="/static/danger.js"></script>
 <script src="/static/lib/xterm.js"></script>
 <script src="/static/lib/addon-fit.js"></script>
 <script>
@@ -122,10 +144,10 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     ws = new WebSocket(`${proto}://${location.host}/ws/terminal/{{ vm.id }}{{ '?become=' ~ (become|urlencode) if become }}`);
     ws.binaryType = "arraybuffer";
-    // Si hacen falta credenciales, el primer mensaje que recibe el servidor es "auth"
+    // If credentials are needed, the first message the server receives is "auth"
     ws.onopen = () => { if (auth) ws.send(JSON.stringify({ t: "auth", ...auth })); resize(); term.focus(); };
     ws.onmessage = (e) => {
-      if (typeof e.data === "string") {          // mensajes de control
+      if (typeof e.data === "string") {          // control messages
         const m = JSON.parse(e.data);
         if (m.t === "session") { sid = m.sid; document.getElementById("files-btn").disabled = false; }
         return;
@@ -135,7 +157,7 @@
     ws.onclose = (e) => {
       sid = null;
       document.getElementById("files-btn").disabled = true;
-      term.write(e.code === 4401 ? "\r\n\x1b[31m{{ _('Sesión caducada: vuelve a entrar en la aplicación.') }}\x1b[0m\r\n" : "");
+      term.write(e.code === 4401 ? "\r\n\x1b[31m{{ _('Session expired: log in to the application again.') }}\x1b[0m\r\n" : "");
     };
   }
 
@@ -154,25 +176,32 @@
     connect(null);
   }
 
-  // ---------- modo seguro: revisar la línea antes de pulsar Intro ----------
+  // ---------- safe mode: review the line before pressing Enter ----------
   function currentLine() {
-    // Lo que se ve en pantalla en la línea del cursor (incluye lo recuperado del historial o autocompletado)
+    // What is shown on screen at the cursor line (includes text recalled from history or autocompleted)
     const b = term.buffer.active;
     let y = b.baseY + b.cursorY, text = b.getLine(y)?.translateToString(true) || "";
     while (y > 0 && b.getLine(y)?.isWrapped) { y--; text = (b.getLine(y)?.translateToString(true) || "") + text; }
-    return text.replace(/^.*?[$#>]\s/, "");   // quita el prompt (usuario@host:~$ )
+    return text.replace(/^.*?[$#>]\s/, "");   // strips the prompt (user@host:~$ )
   }
   function dangers(text) { return RULES.filter((r) => r.re.test(text)).map((r) => t(r.desc)); }
 
-  term.onData((d) => {
+  let confirming = false;   // while the warning is open, nothing else is sent
+  term.onData(async (d) => {
+    if (confirming) return;
     if (SAFE && /[\r\n]/.test(d)) {
-      const line = d.length > 1 ? d : currentLine();   // texto pegado o la línea escrita
+      const line = d.length > 1 ? d : currentLine();   // pasted text or the typed line
       const found = dangers(line);
       if (found.length) {
-        const ok = prompt(t("MODO SEGURO: este comando puede afectar al servidor:") + "\n\n• " + found.join("\n• ") +
-          "\n\n" + line.trim() + "\n\n" + t("Si de verdad quieres ejecutarlo, escribe {w}:", { w: "CONFIRMO" })) === "CONFIRMO";
-        if (!ok) { send({ t: "i", d: "\x03" }); term.focus(); return; }   // Ctrl+C: descarta la línea
+        confirming = true;
+        const ok = await askDangerConfirm(found, line.trim(), t("SAFE MODE: this command may affect the server:"));
+        // Keep ignoring input for a moment: a key still being processed must not re-open the warning
+        setTimeout(() => { confirming = false; }, 400);
+        term.focus();
+        if (!ok) { send({ t: "i", d: "\x03" }); return; }   // Ctrl+C: discards the line
         send({ t: "danger", line: line.trim() });
+        send({ t: "i", d });
+        return;
       }
     }
     send({ t: "i", d });
@@ -191,10 +220,12 @@
   });
   if (!authForm) term.focus();
 
-  // ---------- panel de ficheros (SFTP) ----------
+  // ---------- file panel (SFTP) ----------
   const panel = document.getElementById("files"), list = document.getElementById("f-list");
   const msg = document.getElementById("f-msg"), pathBox = document.getElementById("f-path");
   let cwd = "", parent = null;
+  // In a "sudo su -" (root) terminal the server handles the file panel as root too
+  if ({{ 'true' if become == 'root' else 'false' }}) panel.classList.add("root");
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const size = (n) => n < 1024 ? n + " B" : n < 1048576 ? (n / 1024).toFixed(1) + " KB" : n < 1073741824 ? (n / 1048576).toFixed(1) + " MB" : (n / 1073741824).toFixed(1) + " GB";
   const when = (ts) => ts ? new Date(ts * 1000).toLocaleString() : "";
@@ -203,10 +234,10 @@
 
   async function api(url, opts) {
     const r = await fetch(url, opts);
-    if (r.status === 401) { say(t("Sesión caducada: vuelve a entrar en la aplicación."), "bad"); throw new Error("401"); }
+    if (r.status === 401) { say(t("Session expired: log in to the application again."), "bad"); throw new Error("401"); }
     const data = await r.json();
-    // Subir, crear o borrar ficheros pide la contraseña maestra (válida 5 minutos) y repite la petición
-    if (data.stepup) return (await askStepup()) ? api(url, opts) : { error: "Cancelado", done: [] };
+    // Uploading, creating or deleting files asks for the master password (valid for 5 minutes) and repeats the request
+    if (data.stepup) return (await askStepup()) ? api(url, opts) : { error: "Cancelled", done: [] };
     return data;
   }
 
@@ -220,8 +251,8 @@
         dlg.close();
         if (!pw) return resolve(false);
         const r = await fetch("/api/stepup", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ password: pw, what: "subir o cambiar ficheros" }) });
-        if (!r.ok) { say(t("Contraseña maestra incorrecta"), "bad"); return resolve(false); }
+                                                body: JSON.stringify({ password: pw, what: "upload or change files" }) });
+        if (!r.ok) { say(t("Wrong master password"), "bad"); return resolve(false); }
         resolve(true);
       };
       form.onsubmit = (e) => { e.preventDefault(); done(form.elements.password.value); };
@@ -234,6 +265,7 @@
     const r = await api(`/api/files/${sid}/list?path=${encodeURIComponent(path || "")}`);
     if (r.error) { say(t(r.error), "bad"); return; }
     cwd = r.path; parent = r.parent;
+    document.getElementById("f-goto").value = cwd;
     const parts = cwd.split("/").filter(Boolean);
     pathBox.innerHTML = `<a data-p="/">/</a>` + parts.map((p, i) => `<a data-p="/${parts.slice(0, i + 1).map(encodeURIComponent).join("/")}">${esc(p)}</a>`).join("/");
     pathBox.querySelectorAll("a").forEach((a) => a.onclick = () => load(decodeURIComponent(a.dataset.p)));
@@ -241,8 +273,8 @@
         <span class="kind">${e.dir ? "DIR" : e.link ? "LNK" : ""}</span>
         <span class="nm" title="${esc(e.name)}">${esc(e.name)}</span>
         <span class="meta" title="${esc(e.perms)} · ${when(e.mtime)}">${e.dir ? "" : size(e.size)}</span>
-        ${SAFE ? "" : `<button class="del">${t("Borrar")}</button>`}</div>`).join("") ||
-      `<div class="msg">${t("Carpeta vacía")}</div>`;
+        ${SAFE ? "" : `<button class="del">${t("Delete")}</button>`}</div>`).join("") ||
+      `<div class="msg">${t("Empty folder")}</div>`;
     list.querySelectorAll(".row").forEach((row) => {
       const name = row.dataset.name, full = join(cwd, name);
       row.querySelector(".nm").onclick = () => {
@@ -251,9 +283,9 @@
       };
       const del = row.querySelector(".del");
       if (del) del.onclick = async () => {
-        if (!confirm(t("¿Borrar {n} del servidor? No se puede deshacer.", { n: full }))) return;
+        if (!confirm(t("Delete {n} from the server? This cannot be undone.", { n: full }))) return;
         const res = await api(`/api/files/${sid}/delete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: full }) });
-        say(res.error ? t(res.error) : t("Borrado: {n}", { n: name }), res.error ? "bad" : "ok");
+        say(res.error ? t(res.error) : t("Deleted: {n}", { n: name }), res.error ? "bad" : "ok");
         load(cwd);
       };
     });
@@ -265,15 +297,15 @@
     fd.append("path", cwd);
     if (overwrite) fd.append("overwrite", "1");
     for (const f of fileList) fd.append("files", f);
-    say(t("Subiendo {n} fichero(s)...", { n: fileList.length }));
+    say(t("Uploading {n} file(s)...", { n: fileList.length }));
     const r = await api(`/api/files/${sid}/upload`, { method: "POST", body: fd });
-    if (r.error && r.error.startsWith("Ya existe") && !SAFE && !overwrite) {
-      if (confirm(t(r.error) + ". " + t("¿Sobrescribir?"))) {
+    if (r.error && r.error.endsWith("already exists") && !SAFE && !overwrite) {
+      if (confirm(t(r.error) + ". " + t("Overwrite?"))) {
         const pending = [...fileList].filter((f) => !r.done.some((d) => d.endsWith("/" + f.name)));
         return uploadFiles(pending, true);
       }
     }
-    say(r.error ? t(r.error) : t("Subidos: {n}", { n: r.done.length }), r.error ? "bad" : "ok");
+    say(r.error ? t(r.error) : t("Uploaded: {n}", { n: r.done.length }), r.error ? "bad" : "ok");
     load(cwd);
   }
 
@@ -284,10 +316,15 @@
     if (!panel.hidden && !cwd) load("");
   };
   document.getElementById("f-home").onclick = () => load("");
+  document.getElementById("f-go").onsubmit = (e) => {
+    e.preventDefault();
+    const path = document.getElementById("f-goto").value.trim();
+    if (path) load(path);
+  };
   document.getElementById("f-up").onclick = () => parent && load(parent);
   document.getElementById("f-refresh").onclick = () => load(cwd);
   document.getElementById("f-mkdir").onclick = async () => {
-    const name = prompt(t("Nombre de la nueva carpeta:"));
+    const name = prompt(t("Name of the new folder:"));
     if (!name) return;
     const r = await api(`/api/files/${sid}/mkdir`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: join(cwd, name) }) });
     say(r.error ? t(r.error) : "", r.error ? "bad" : "");

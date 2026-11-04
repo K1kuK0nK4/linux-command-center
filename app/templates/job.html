@@ -1,29 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="head">
-  <h1>Ejecución #{{ job.id }}</h1>
+  <h1>Run #{{ job.id }}</h1>
   <span id="progress" class="muted"></span>
-  <a class="btn" href="/commands?command={{ job.command|urlencode }}">Repetir</a>
-  <a class="btn" href="/jobs/{{ job.id }}/export.csv">Exportar CSV</a>
+  <button id="cancel-btn" class="danger" hidden onclick="cancelJob()">Cancel run</button>
+  <a class="btn" href="{{ repeat }}">Repeat</a>
+  <a class="btn" href="/jobs/{{ job.id }}/export.csv">Export CSV</a>
 </div>
 <div class="card">
   <pre class="out" style="margin:0">{% if job.use_sudo %}# sudo
 {% endif %}{{ job.command }}</pre>
-  <div class="hint">Lanzado {{ job.created_at }} en {{ job.target_count }} servidores · tiempo máx. {{ job.timeout_s }} s</div>
+  <div class="hint">Started {{ job.created_at }} on {{ job.target_count }} servers · max. time {{ job.timeout_s }} s</div>
 </div>
 <div class="filters">
-  <input id="out-filter" placeholder="Filtrar por servidor o por texto en la salida...">
-  <select id="st-filter"><option value="">Todos los estados</option><option value="ok">OK</option>
-    <option value="fallo">Fallo (código ≠ 0)</option><option value="error">Error de conexión</option></select>
-  <button onclick="toggleAll(true)">Expandir todo</button>
-  <button onclick="toggleAll(false)">Contraer todo</button>
+  <input id="out-filter" placeholder="Filter by server or by text in the output...">
+  <select id="st-filter"><option value="">All statuses</option><option value="ok">OK</option>
+    <option value="failed">Failed (exit code ≠ 0)</option><option value="error">Connection error</option>
+    <option value="cancelled">Cancelled</option></select>
+  <button onclick="toggleAll(true)">Expand all</button>
+  <button onclick="toggleAll(false)">Collapse all</button>
 </div>
 <div id="results"></div>
 {% endblock %}
 {% block scripts %}
 <script>
   const esc = (s) => (s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  const BADGE = { ok: "b-ok", fallo: "b-warn", error: "b-bad", pendiente: "b-muted", ejecutando: "b-info" };
+  const BADGE = { ok: "b-ok", failed: "b-warn", error: "b-bad", pending: "b-muted", running: "b-info", cancelled: "b-muted" };
+  async function cancelJob() {
+    if (!confirm(t("Cancel the run? Open connections are closed; servers that already finished are not affected."))) return;
+    const r = await api("/api/jobs/{{ job.id }}/cancel", {});
+    if (r.error) alert(t(r.error));
+  }
   const open = new Set();
   function toggleAll(state) { document.querySelectorAll("details.res").forEach((d) => { d.open = state; }); }
   let data = [];
@@ -34,26 +41,27 @@
     const html = data.filter((r) => (!st || r.status === st) &&
         (!q || `${r.vm_name} ${r.host} ${r.stdout} ${r.stderr}`.toLowerCase().includes(q)))
       .map((r) => {
-        // Los errores de conexión los genera la aplicación: se traducen; la salida de los comandos no
+        // The application generates connection errors, so they are translated; command output is not
         if (r.status === "error" && r.stderr) r.stderr = t(r.stderr);
         const first = (r.stdout || r.stderr || "").split("\n")[0].slice(0, 120);
         return `<details class="res" data-vm="${r.vm_id}" ${open.has(String(r.vm_id)) ? "open" : ""}>
-          <summary><span class="badge ${r.status === "ejecutando" ? "" : "st "}${BADGE[r.status] || "b-muted"}">${r.status === "ejecutando" ? '<span class="spin"></span> ' : ""}${esc(t(r.status))}${r.exit_code != null && r.status !== "ok" ? " (" + r.exit_code + ")" : ""}</span>
+          <summary><span class="badge ${r.status === "running" ? "" : "st "}${BADGE[r.status] || "b-muted"}">${r.status === "running" ? '<span class="spin"></span> ' : ""}${esc(t(r.status))}${r.exit_code != null && r.status !== "ok" ? " (" + r.exit_code + ")" : ""}</span>
             <b>${esc(r.vm_name)}</b> <span class="muted small mono">${esc(r.host)}</span> <span class="muted small">${esc(r.client)}</span>
             <span class="muted small mono" style="margin-left:auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:45%">${esc(first)}</span></summary>
           <div class="body">${r.stdout ? `<pre class="out">${esc(r.stdout)}</pre>` : ""}${r.stderr ? `<pre class="out bad">${esc(r.stderr)}</pre>` : ""}
-            ${!r.stdout && !r.stderr && r.finished_at ? '<span class="muted small">' + t("(sin salida)") + '</span>' : ""}</div></details>`;
+            ${!r.stdout && !r.stderr && r.finished_at ? '<span class="muted small">' + t("(no output)") + '</span>' : ""}</div></details>`;
       }).join("");
-    document.getElementById("results").innerHTML = html || '<p class="muted">' + t("Sin resultados con ese filtro.") + '</p>';
+    document.getElementById("results").innerHTML = html || '<p class="muted">' + t("No results with that filter.") + '</p>';
   }
   async function poll() {
     const r = await api("/api/jobs/{{ job.id }}");
     data = r.results;
-    const done = data.filter((x) => !["pendiente", "ejecutando"].includes(x.status)).length;
+    const done = data.filter((x) => !["pending", "running"].includes(x.status)).length;
     const c = (s) => data.filter((x) => x.status === s).length;
     document.getElementById("progress").innerHTML = (r.finished ? "" : '<span class="spin"></span> ') +
-      `${t("{a}/{b} terminadas", { a: done, b: data.length })} · <span class="bad">${t("{n} error", { n: c("error") })}</span> · <span class="warn">${t("{n} fallo", { n: c("fallo") })}</span> · ${t("{n} ok", { n: c("ok") })}`;
+      `${t("{a}/{b} finished", { a: done, b: data.length })} · <span class="bad">${t("{n} error", { n: c("error") })}</span> · <span class="warn">${t("{n} failed", { n: c("failed") })}</span> · ${t("{n} ok", { n: c("ok") })}`;
     render();
+    document.getElementById("cancel-btn").hidden = r.finished;
     if (!r.finished) setTimeout(poll, 1500);
   }
   document.getElementById("out-filter").addEventListener("input", render);

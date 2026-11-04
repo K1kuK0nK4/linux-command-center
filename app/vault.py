@@ -1,10 +1,10 @@
-"""Cifrado de credenciales con una contraseña maestra.
+"""Credential encryption with a master password.
 
-La clave se deriva con scrypt y solo vive en memoria mientras la aplicación
-está desbloqueada. En la base de datos únicamente hay datos cifrados (AES-GCM).
+The key is derived with scrypt and only lives in memory while the application
+is unlocked. The database only holds encrypted data (AES-GCM).
 
-La derivación es lenta a propósito (frena ataques de fuerza bruta): se calcula fuera del
-bucle principal (derive_for / derive) y las escrituras en la base de datos se hacen después.
+Derivation is slow on purpose (it slows down brute-force attacks): it is computed outside the
+main loop (derive_for / derive) and the database writes are done afterwards.
 """
 import base64
 import hashlib
@@ -16,8 +16,8 @@ from . import db
 
 CHECK_PLAINTEXT = b"inventario-vm-ok"
 SECRET_COLUMNS = ("password_enc", "private_key_enc", "key_passphrase_enc", "sudo_password_enc")
-LEGACY_LOG_N = 15   # instalaciones antiguas: scrypt N=2^15 (32 MB)
-CURRENT_LOG_N = 17  # actual: scrypt N=2^17 (128 MB, ~0,5 s), recomendación OWASP
+LEGACY_LOG_N = 15   # old installations: scrypt N=2^15 (32 MB)
+CURRENT_LOG_N = 17  # current: scrypt N=2^17 (128 MB, ~0.5 s), OWASP recommendation
 
 
 def derive(password, salt, log_n=CURRENT_LOG_N):
@@ -65,7 +65,7 @@ class Vault:
         self.key = key
 
     def derive_for(self, password):
-        """Clave candidata con los parámetros guardados (lento: llamar con asyncio.to_thread)."""
+        """Candidate key using the saved parameters (slow: call with asyncio.to_thread)."""
         return derive(password, bytes.fromhex(db.get_setting("vault_salt")), self.log_n)
 
     def check_key(self, key):
@@ -97,7 +97,7 @@ class Vault:
         return _dec(self.key, blob).decode()
 
     def rekey(self, new_key, salt, log_n=CURRENT_LOG_N):
-        """Vuelve a cifrar todo con una clave nueva (cambio de contraseña o mejora de parámetros)."""
+        """Re-encrypts everything with a new key (password change or parameter upgrade)."""
         old_key = self.key
         with db.tx() as c:
             for row in c.execute("SELECT * FROM credentials").fetchall():
@@ -115,7 +115,7 @@ class Vault:
         self.key = new_key
 
     def change_password(self, old, new):
-        """Versión síncrona (tests y scripts). La web usa derive en un hilo + rekey."""
+        """Synchronous version (tests and scripts). The web app uses derive in a thread + rekey."""
         if not self.unlock(old):
             return False
         salt = os.urandom(16)
@@ -123,9 +123,9 @@ class Vault:
         return True
 
     def audit_key(self):
-        """Clave aleatoria para firmar la auditoría, guardada cifrada. None si está bloqueado.
+        """Random key used to sign the audit log, stored encrypted. None if locked.
 
-        Es independiente de la contraseña maestra, así cambiarla no invalida las firmas antiguas.
+        It is independent of the master password, so changing it does not invalidate old signatures.
         """
         if not self.key:
             return None

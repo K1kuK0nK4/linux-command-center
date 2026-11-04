@@ -1,25 +1,23 @@
 {% extends "base.html" %}
-{% block title %}Copias de seguridad · {{ APP_NAME }}{% endblock %}
+{% block title %}Backups · {{ APP_NAME }}{% endblock %}
 {% block content %}
-<h1>Copias de seguridad</h1>
+<h1>Backups</h1>
 {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
 {% if summary is defined %}
 <div class="alert ok">
-  Importada la exportación{% if imported_at %} del {{ imported_at }}{% endif %}:
+  Export imported{% if imported_at %} from {{ imported_at }}{% endif %}:
   <ul style="margin:6px 0 0">{% for section, values in summary.items() %}
     <li><b>{{ section }}</b>: {% for k, n in values.items() %}{{ n }} {{ k }}{{ ', ' if not loop.last }}{% endfor %}</li>
-  {% else %}<li>No había nada que importar.</li>{% endfor %}</ul>
+  {% else %}<li>There was nothing to import.</li>{% endfor %}</ul>
 </div>
 {% endif %}
 
 <div class="grid">
   <div class="card">
-    <h2>Exportar todo (.lcc)</h2>
-    <p class="small muted" style="margin-top:0">Un único fichero <b>cifrado</b> (AES-256) con la contraseña que elijas, contraseñas incluidas.
-      Exportar e importar piden además la contraseña maestra. Sirve para guardar una copia, llevarla a otro PC o
-      pasársela a otra persona de tu equipo, que la importa en su propia instalación.</p>
+    <h2>Export everything (.lcc)</h2>
+    <p class="small muted" style="margin-top:0">A single <b>encrypted</b> file (AES-256) with the password you choose, passwords included. Exporting and importing also require the master password. Use it to keep a copy, move it to another PC or give it to someone on your team, who imports it into their own installation.</p>
     <form method="post" action="/backup/export" class="form" style="max-width:none" autocomplete="off">
-      <label>Qué incluir</label>
+      <label>What to include</label>
       {% set n = {'vms': counts.vms, 'credentials': counts.credentials, 'organization': counts.catalog ~ ' + ' ~ counts.tags,
                   'commands': counts.commands, 'charts': counts.charts, 'settings': ''} %}
       {% for key, label in sections.items() %}
@@ -27,62 +25,59 @@
         {{ label }} {% if n[key] != '' %}<span class="muted small">({{ n[key] }})</span>{% endif %}</label><br>
       {% endfor %}
       <div class="row">
-        <div><label>Contraseña del fichero (10+)</label><input type="password" name="file_password" required minlength="10" autocomplete="new-password"></div>
-        <div><label>Repítela</label><input type="password" name="file_password2" required minlength="10" autocomplete="new-password"></div>
+        <div><label>File password (10+)</label><input type="password" name="file_password" required minlength="10" autocomplete="new-password"></div>
+        <div><label>Repeat it</label><input type="password" name="file_password2" required minlength="10" autocomplete="new-password"></div>
       </div>
-      <label>Tu contraseña maestra (para confirmar)</label>
+      <label>Your master password (to confirm)</label>
       <input type="password" name="master_password" required autocomplete="off">
-      <div class="hint">Sin la contraseña del fichero no se puede abrir: apúntala en tu gestor de contraseñas.
-        Si se lo pasas a otra persona, dale la contraseña por otro canal.</div>
-      <p><button class="primary" type="submit">Exportar</button></p>
+      <div class="hint">Without the file password it cannot be opened: keep it in your password manager. If you give it to someone on your team, send the password through another channel.</div>
+      <p><button class="primary" type="submit">Export</button></p>
     </form>
   </div>
 
   <div class="card">
-    <h2>Importar una exportación (.lcc)</h2>
-    <p class="small muted" style="margin-top:0">Añade lo que hay en el fichero a lo que ya tienes, sin borrar nada.</p>
+    <h2>Import an export (.lcc)</h2>
+    <p class="small muted" style="margin-top:0">Adds the file's contents to what you already have, without deleting anything.</p>
     <form method="post" action="/backup/import" enctype="multipart/form-data" class="form" style="max-width:none" autocomplete="off">
       <input type="file" name="file" accept=".lcc" required style="width:100%">
-      <label>Contraseña del fichero</label>
+      <label>File password</label>
       <input type="password" name="file_password" required autocomplete="off">
-      <label>Tu contraseña maestra (para confirmar)</label>
+      <label>Your master password (to confirm)</label>
       <input type="password" name="master_password" required autocomplete="off">
-      <div class="hint">La tuya, la de esta instalación; no la de quien hizo la exportación.</div>
-      <label>Si algo ya existe</label>
+      <div class="hint">Yours, for this installation; not the one of whoever made the export.</div>
+      <label>If something already exists</label>
       <div class="seg">
-        <label><input type="radio" name="mode" value="add" checked> No tocarlo</label>
-        <label><input type="radio" name="mode" value="update"> Actualizarlo con el fichero</label>
+        <label><input type="radio" name="mode" value="add" checked> Leave it</label>
+        <label><input type="radio" name="mode" value="update"> Update it from the file</label>
       </div>
-      <div class="hint">Un servidor "ya existe" si coincide cliente + IP + puerto. Las credenciales, comandos y etiquetas
-        se comparan por nombre.</div>
-      <p><button class="primary" type="submit">Importar</button></p>
+      <div class="hint">A server "already exists" if organization + IP + port match. Credentials, commands and tags are compared by name.</div>
+      <p><button class="primary" type="submit">Import</button></p>
     </form>
   </div>
 
   <div class="card">
-    <h2>Copia exacta (.db)</h2>
-    <p class="small">Un clon <b>completo</b> de la base de datos, incluido el historial de escaneos, paquetes, ejecuciones y auditoría.
-      Las credenciales van cifradas con tu contraseña maestra: para usarla necesitarás esa misma contraseña.</p>
-    <p><a class="btn primary" href="/settings/backup">Descargar copia exacta</a></p>
+    <h2>Exact copy (.db)</h2>
+    <p class="small">A <b>full clone</b> of the database, including scan history, packages, runs and audit log. Credentials are encrypted with your master password: you will need that same password to use it.</p>
+    <p><a class="btn primary" href="/settings/backup">Download exact copy</a></p>
     <hr style="border:0;border-top:1px solid var(--border);margin:16px 0">
-    <h2 style="font-size:14px">Restaurar una copia exacta</h2>
+    <h2 style="font-size:14px">Restore an exact copy</h2>
     <form method="post" action="/backup/restore-db" enctype="multipart/form-data"
-          data-confirm="Se SUSTITUIRÁ todo lo que hay ahora por el contenido de la copia (lo actual se guarda aparte por si acaso). Después tendrás que entrar con la contraseña maestra de esa copia. ¿Continuar?">
+          data-confirm="EVERYTHING will be REPLACED by the copy&#x27;s contents (the current data is saved aside just in case). Afterwards you will log in with that copy&#x27;s master password. Continue?">
       <input type="file" name="file" accept=".db" required style="width:100%">
-      <p><button class="danger" type="submit">Restaurar y reemplazar todo</button></p>
+      <p><button class="danger" type="submit">Restore and replace everything</button></p>
     </form>
   </div>
 </div>
 
 <div class="card">
-  <h2>¿Cuál uso?</h2>
+  <h2>Which one should I use?</h2>
   <table>
-    <thead><tr><th></th><th>Exportación .lcc</th><th>Copia exacta .db</th></tr></thead>
+    <thead><tr><th></th><th>.lcc export</th><th>.db exact copy</th></tr></thead>
     <tbody>
-      <tr><td>Qué contiene</td><td>Lo que marques: servidores, credenciales, organización, comandos, gráficos, ajustes</td><td>Absolutamente todo, con historial</td></tr>
-      <tr><td>Cifrado</td><td>Con la contraseña que eliges al exportar</td><td>Las credenciales, con tu contraseña maestra</td></tr>
-      <tr><td>Al cargarla</td><td>Se <b>añade</b> a lo que ya hay</td><td><b>Sustituye</b> todo</td></tr>
-      <tr><td>Ideal para</td><td>Pasar servidores/comandos a otra persona de tu equipo, migrar a otro PC</td><td>Copia periódica de seguridad</td></tr>
+      <tr><td>Contents</td><td>Whatever you tick: servers, credentials, organization, commands, charts, settings</td><td>Absolutely everything, with history</td></tr>
+      <tr><td>Encryption</td><td>With the password you choose when exporting</td><td>Credentials, with your master password</td></tr>
+      <tr><td>When loaded</td><td>It is <b>added</b> to what is already there</td><td><b>Replaces</b> everything</td></tr>
+      <tr><td>Ideal for</td><td>Giving servers/commands to someone on your team, moving to another PC</td><td>Regular backups</td></tr>
     </tbody>
   </table>
 </div>

@@ -1,4 +1,4 @@
-"""Comparación de versiones de paquetes al estilo dpkg (Debian/Ubuntu) y rpm (RHEL)."""
+"""Package version comparison in the style of dpkg (Debian/Ubuntu) and rpm (RHEL)."""
 
 DIGITS = "0123456789"
 LETTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -148,13 +148,13 @@ def rpm_compare(a, b, ignore_epoch=False):
     return rpmvercmp(ra, rb)
 
 
-# ---------- API común ----------
+# ---------- common API ----------
 
 def compare(installed, target, family):
-    """Compara la versión instalada con la indicada por el usuario.
+    """Compares the installed version with the one given by the user.
 
-    Si el usuario no escribe epoch ("1:"), se ignora el epoch del paquete instalado:
-    así "openssl < 3.0.7-28.el9" funciona aunque en RHEL el paquete sea "1:3.0.7-27.el9".
+    If the user does not write an epoch ("1:"), the epoch of the installed package is ignored:
+    so "openssl < 3.0.7-28.el9" works even if on RHEL the package is "1:3.0.7-27.el9".
     """
     ignore_epoch = ":" not in target
     if family == "rpm":

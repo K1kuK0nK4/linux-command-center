@@ -5,7 +5,7 @@
   --bad: #c0392b; --bad-bg: #fbe5e2; --info-bg: #e6eefc; --nav: #1b2233; --nav-text: #c9d1e3;
   --mono: ui-monospace, "Cascadia Code", Consolas, monospace;
 }
-/* Oscuro: automático (según Windows) salvo que se fuerce claro, o forzado en Ajustes */
+/* Dark: automatic (follows Windows) unless light is forced, or forced in Settings */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12151c; --panel: #1a1f29; --panel-2: #222835; --text: #e3e7ef; --muted: #8d96a9;
@@ -21,9 +21,9 @@
   color-scheme: dark;
 }
 :root[data-theme="light"] { color-scheme: light; }
-/* Color principal elegido en Ajustes (se aplica en los dos modos) */
+/* Main color chosen in Settings (applies in both modes) */
 :root[data-accent] { --accent: var(--accent-custom); }
-/* Densidad compacta */
+/* Compact density */
 :root[data-density="compact"] body { font-size: 13px; }
 :root[data-density="compact"] th, :root[data-density="compact"] td { padding: 3px 7px; }
 :root[data-density="compact"] .card { padding: 11px 13px; margin-bottom: 11px; }
@@ -46,6 +46,9 @@ nav.side .brand .sub { font-weight: 500; font-size: 13px; color: var(--nav-text)
   border: 1px solid var(--border); background: var(--panel-2); color: var(--text); white-space: nowrap; margin: 1px 2px 1px 0; }
 .tag::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--tag, var(--muted)); }
 a.tag:hover { text-decoration: none; border-color: var(--accent); }
+/* key:value tag: the key is a shaded segment on the left, the value stays normal */
+.tag .tk { margin: -1px 0 -1px 0; padding: 1px 7px; background: var(--border); color: var(--muted);
+  font-weight: 600; border-radius: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .02em; }
 .tag-pick { display: flex; flex-wrap: wrap; gap: 6px; }
 .tag-pick label { font-weight: normal; margin: 0; display: inline-flex; gap: 5px; align-items: center;
   border: 1px solid var(--border); border-radius: 14px; padding: 3px 10px; cursor: pointer; }
@@ -55,7 +58,7 @@ a.tag:hover { text-decoration: none; border-color: var(--accent); }
 .seg label:has(input:checked) { background: var(--accent); color: var(--accent-text); }
 .seg input { display: none; }
 .search-form { display: grid; gap: 12px; align-items: end;
-  grid-template-columns: minmax(180px, 2fr) 110px minmax(160px, 2fr) repeat(5, minmax(110px, 1fr)) auto; }
+  grid-template-columns: minmax(180px, 2fr) 110px minmax(160px, 2fr) repeat(4, minmax(110px, 1fr)) auto; }
 .search-form label { margin-top: 0; }
 .search-form input:not([type=checkbox]), .search-form select { width: 100%; }
 @media (max-width: 1500px) { .search-form { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); } }
@@ -95,7 +98,7 @@ nav.side .lang-switch { margin: 8px 18px 0; border-color: rgba(255,255,255,.15);
 .legal { font-size: 13.5px; line-height: 1.55; }
 .legal li { margin-bottom: 8px; }
 
-/* Gráficos */
+/* Charts */
 .viz-root {
   --surface-1: #fcfcfb; --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-4: #eda100;
   --series-5: #e87ba4; --series-6: #008300; --series-7: #6250d6; --series-8: #e34948; --series-other: #898781;
@@ -124,12 +127,21 @@ nav.side .lang-switch { margin: 8px 18px 0; border-color: rgba(255,255,255,.15);
 .col-order button { padding: 1px 7px; font-size: 11px; margin-left: 3px; }
 .charts { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); margin-bottom: 16px; }
 .chart-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; }
-.chart-card .ch-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
-.chart-card .ch-head h2 { margin: 0; margin-right: auto; font-size: 15px; }
-.chart-card .ch-head button { padding: 2px 7px; font-size: 12px; border-color: transparent; background: transparent; color: var(--muted); }
-.chart-card .ch-head button:hover { border-color: var(--border); color: var(--text); }
+.chart-card .ch-head, .widget .ch-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+.chart-card .ch-head h2, .widget .ch-head h2 { margin: 0; margin-right: auto; font-size: 15px; }
+.chart-card .ch-head button, .widget .ch-head button { padding: 2px 7px; font-size: 12px; border-color: transparent;
+  background: transparent; color: var(--muted); }
+.chart-card .ch-head button:hover, .widget .ch-head button:hover { border-color: var(--border); color: var(--text); }
+.widget table { font-size: 13px; }
+.widget th, .widget td { padding: 6px 7px; }
+.widget td button { padding: 3px 9px; font-size: 12px; }
 .chart-card .ch-sub { color: var(--muted); font-size: 12px; margin: -4px 0 8px; }
 .chart-box { position: relative; height: 260px; }
+.pager { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+.pager button { min-width: 30px; padding: 2px 8px; }
+.pager button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+table.ranking { background: none; font-size: 13px; }
+table.ranking td, table.ranking th { padding: 5px 8px; }
 .chart-legend { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 3px 12px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); font-size: 12.5px; }
 .chart-legend li { display: flex; gap: 6px; align-items: center; min-width: 0; }
 .chart-legend .sw { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
@@ -154,6 +166,13 @@ h2 { font-size: 16px; margin: 0 0 10px; }
 
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+/* Nothing pushes off screen: columns can shrink and long texts wrap */
+.grid > *, .charts > *, main { min-width: 0; }
+td { overflow-wrap: break-word; }
+td input, td select { max-width: 100%; min-width: 0; }
+td form.filters { flex-wrap: wrap !important; }
+td form.filters input:not([type=checkbox]) { width: 100%; flex: 1 1 90px; }
+.card:has(> table) { overflow-x: auto; }   /* last resort: the table scrolls inside its card */
 .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-bottom: 16px; }
 .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
 a.kpi { color: var(--text); } a.kpi:hover { text-decoration: none; border-color: var(--accent); }
@@ -166,12 +185,15 @@ th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid var(--bord
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); background: var(--panel-2);
   position: sticky; top: 0; cursor: default; }
 th.sortable { cursor: pointer; user-select: none; }
+th.sortable::after { content: "↕"; margin-left: 4px; opacity: .35; font-size: 10px; }
+th.sortable[data-dir=asc]::after { content: "▲"; opacity: .9; color: var(--accent); }
+th.sortable[data-dir=desc]::after { content: "▼"; opacity: .9; color: var(--accent); }
 tr:hover td { background: var(--panel-2); }
 .table-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 8px; max-height: 70vh; }
 .table-wrap table { border: 0; }
 
 .badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-/* Estado (escaneo, ejecución, contenedor): punto de color delante del texto */
+/* Status (scan, run, container): colored dot before the text */
 .badge.st::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: currentColor; margin-right: 6px; vertical-align: 1px; }
 .b-ok { background: var(--ok-bg); color: var(--ok); } .b-bad { background: var(--bad-bg); color: var(--bad); }
@@ -185,8 +207,12 @@ button:hover, .btn:hover { border-color: var(--accent); text-decoration: none; }
 .primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .danger { color: var(--bad); border-color: var(--bad); }
 button:disabled { opacity: .5; cursor: not-allowed; }
+/* Native selects look like the multi-select dropdowns: rounded, with the same arrow */
+select { appearance: none; -webkit-appearance: none; padding-right: 28px !important; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238d96a9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; }
 input, select, textarea { font: inherit; padding: 7px 9px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--panel); color: var(--text); max-width: 100%; }
+  background-color: var(--panel); color: var(--text); max-width: 100%; }
 textarea { width: 100%; font-family: var(--mono); }
 input[type=checkbox] { width: 16px; height: 16px; vertical-align: middle; }
 label { display: block; font-weight: 600; margin: 10px 0 4px; font-size: 13px; }

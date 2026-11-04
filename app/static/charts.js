@@ -1,4 +1,4 @@
-// Gráficos personalizables del Panel (Chart.js). Se recargan cuando cambia el inventario.
+// Customizable Dashboard charts (Chart.js). Reloaded when the inventory changes.
 
 const container = document.getElementById("charts");
 const editor = document.getElementById("editor");
@@ -20,10 +20,10 @@ let version = null;
 let charts = [];
 const instances = [];
 
-// El color sigue a la categoría, no a su posición: se recuerda qué color tuvo cada etiqueta.
+// Color follows the category, not its position: the color each label had is remembered.
 function colorsFor(chartId, labels) {
   let memo = {};
-  try { memo = JSON.parse(localStorage.getItem("chart-colors-" + chartId) || "{}"); } catch { /* sin almacenamiento */ }
+  try { memo = JSON.parse(localStorage.getItem("chart-colors-" + chartId) || "{}"); } catch { /* no storage available */ }
   const used = new Set();
   const out = labels.map((l) => {
     if (isOther(l)) return OTHER;
@@ -33,52 +33,65 @@ function colorsFor(chartId, labels) {
   });
   labels.forEach((l, i) => {
     if (out[i] !== null) return;
-    const free = SERIES.findIndex((_, s) => !used.has(s));
-    const slot = free === -1 ? 0 : free;
+    let slot = 0;
+    while (used.has(slot)) slot++;
     used.add(slot);
     memo[l] = slot;
     out[i] = slot;
   });
-  try { localStorage.setItem("chart-colors-" + chartId, JSON.stringify(memo)); } catch { /* sin almacenamiento */ }
-  return out.map((c) => (typeof c === "number" ? SERIES[c] : c));
+  try { localStorage.setItem("chart-colors-" + chartId, JSON.stringify(memo)); } catch { /* no storage available */ }
+  return out.map((c) => (typeof c === "number" ? seriesColor(c) : c));
+}
+
+// The palette has 7 colors; beyond that, extra hues are generated so every category gets its own color
+function seriesColor(slot) {
+  return slot < SERIES.length ? SERIES[slot] : `hsl(${(slot * 47 + 15) % 360} 55% 55%)`;
 }
 
 function describeFilters(c) {
   const f = c.filters || {}, parts = [];
-  const list = (key) => { const v = f[key]; return !v ? [] : Array.isArray(v) ? v : [v]; };  // gráficos antiguos: un valor
+  const list = (key) => { const v = f[key]; return !v ? [] : Array.isArray(v) ? v : [v]; };  // older charts: a single value
   const names = (key) => multiLabels("f_" + key, list(key)).join(", ");
-  if (list("client").length) parts.push(t("cliente {c}", { c: names("client") }));
-  if (list("environment").length) parts.push(t("entorno {e}", { e: names("environment") }));
-  if (list("tag").length) parts.push(t("etiqueta {t}", { t: names("tag") }));
+  if (list("client").length) parts.push(t("client {c}", { c: names("client") }));
+  if (list("environment").length) parts.push(t("environment {e}", { e: names("environment") }));
+  if (list("tag").length) parts.push(t("tag {t}", { t: names("tag") }));
   if (list("os_family").length) parts.push(names("os_family"));
   if (list("os_name").length) parts.push(names("os_name"));
-  return parts.length ? t("Solo {f}", { f: parts.join(" · ") }) : "";
+  return parts.length ? t("Only {f}", { f: parts.join(" · ") }) : "";
 }
 
 function render() {
   instances.splice(0).forEach((i) => i.destroy());
   if (!charts.length) {
-    container.innerHTML = `<div class="card muted">${t("No hay gráficos. Pulsa")} <b>${t("+ Nuevo gráfico")}</b>.</div>`;
+    container.innerHTML = `<div class="card muted">${t("No charts. Press")} <b>${t("+ New chart")}</b>.</div>`;
     return;
   }
   container.innerHTML = charts.map((c, idx) => {
     const n = c.data.labels.length;
     const h = c.kind === "bar" ? Math.max(120, n * 28 + 30) : 240;
-    const sub = [describeFilters(c), c.dimension === "package_version" ? t("Paquete: {p}", { p: c.package }) : ""].filter(Boolean).join(" · ");
+    const sub = [describeFilters(c),
+      ["package_version", "oldest_version"].includes(c.dimension) ? t("Package: {p}", { p: c.package }) : "",
+      c.dimension === "tag_key" ? t("Key: {p}", { p: c.package }) : ""].filter(Boolean).join(" · ");
+    const ranking = c.data.ranking && (c.data.ranking.length
+      ? `<table class="ranking"><thead><tr><th>#</th><th>${t("Server")}</th><th>${t("Version")}</th><th>${t("OS")}</th></tr></thead><tbody>` +
+        c.data.ranking.map((r, i) => `<tr><td class="muted">${i + 1}</td><td><a href="${esc(r.link)}">${esc(r.server)}</a></td>
+          <td class="mono small">${esc(r.version)}${r.package !== c.package ? ` <span class="muted">(${esc(r.package)})</span>` : ""}</td>
+          <td class="small">${esc(r.os)}</td></tr>`).join("") + "</tbody></table>"
+      : `<p class="muted small">${t("No server has that package with these filters.")}</p>`);
     return `<div class="chart-card">
       <div class="ch-head"><h2>${esc(c.title)}</h2>
-        <span class="muted small">${t("{n} VMs", { n: c.data.total })}</span>
+        <span class="muted small">${t("{n} servers", { n: c.data.total })}</span>
         <button title="${t("Mover a la izquierda")}" onclick="moveChart(${c.id},-1)" ${idx === 0 ? "disabled" : ""}>←</button>
         <button title="${t("Mover a la derecha")}" onclick="moveChart(${c.id},1)" ${idx === charts.length - 1 ? "disabled" : ""}>→</button>
-        <button title="${t("Editar")}" onclick="openEditor(${c.id})">${t("Editar")}</button>
-        <button title="${t("Eliminar")}" onclick="deleteChart(${c.id})">${t("Eliminar")}</button></div>
+        <button title="${t("Editar")}" onclick="openEditor(${c.id})">${t("Edit")}</button>
+        <button title="${t("Eliminar")}" onclick="deleteChart(${c.id})">${t("Delete")}</button></div>
       ${sub ? `<div class="ch-sub">${esc(sub)}</div>` : ""}
-      ${n ? `<div class="chart-box" style="height:${h}px"><canvas id="cv-${c.id}" role="img" aria-label="${esc(c.title)}"></canvas></div>
+      ${ranking ? ranking : n ? `<div class="chart-box" style="height:${h}px"><canvas id="cv-${c.id}" role="img" aria-label="${esc(c.title)}"></canvas></div>
              ${c.kind !== "bar" ? `<ul class="chart-legend" id="lg-${c.id}"></ul>` : ""}`
-          : `<p class="muted small">${t("Sin datos con estos filtros.")}</p>`}
+          : `<p class="muted small">${t("No data with these filters.")}</p>`}
     </div>`;
   }).join("");
-  charts.forEach((c) => c.data.labels.length && draw(c));
+  charts.forEach((c) => c.data.labels.length && !c.data.ranking && draw(c));
 }
 
 function draw(c) {
@@ -88,7 +101,7 @@ function draw(c) {
   const go = (i) => { if (links[i]) location.href = links[i]; };
   const tooltip = {
     backgroundColor: "rgba(20,22,28,.95)", titleColor: "#fff", bodyColor: "#e3e7ef", padding: 10, cornerRadius: 6,
-    callbacks: { label: (ctx) => ` ${t("{n} VMs ({p}%)", { n: ctx.raw, p: pct(ctx.raw) })}${links[ctx.dataIndex] ? " · " + t("clic para ver") : ""}` },
+    callbacks: { label: (ctx) => ` ${t("{n} servers ({p}%)", { n: ctx.raw, p: pct(ctx.raw) })}${links[ctx.dataIndex] ? " · " + t("click to view") : ""}` },
   };
   const onHover = (e, els) => { e.native.target.style.cursor = els.length && links[els[0].index] ? "pointer" : "default"; };
   const onClick = (e, els) => els.length && go(els[0].index);
@@ -135,13 +148,13 @@ async function load() {
   render();
 }
 
-// Comprueba cada 5 s si el inventario cambió (escaneos, VMs nuevas, etiquetas...) y redibuja.
+// Checks every 5 s whether the inventory changed (scans, new VMs, tags...) and redraws.
 setInterval(async () => {
   if (document.hidden || editor.open) return;
   try {
     const r = await api("/api/charts/version");
     if (r.version !== version) load();
-  } catch { /* servidor reiniciándose */ }
+  } catch { /* server restarting */ }
 }, 5000);
 
 // ---------- editor ----------
@@ -150,27 +163,40 @@ const form = document.getElementById("editor-form");
 const F = (name) => form.elements[name];
 const FILTER_KEYS = ["client", "environment", "tag", "os_family", "os_name"];
 const pkgField = document.getElementById("pkg-field");
-F("dimension").addEventListener("change", () => { pkgField.hidden = F("dimension").value !== "package_version"; });
+// Dimensions that need the text field: package(s) or tag key
+const NEEDS_TEXT = { package_version: "pkg", oldest_version: "oldest", tag_key: "key" };
+function syncTextField() {
+  const kind = NEEDS_TEXT[F("dimension").value];
+  pkgField.hidden = !kind;
+  const label = document.getElementById("pkg-label");
+  label.textContent = t(kind === "key" ? label.dataset.key : label.dataset.pkg);
+  F("package").placeholder = kind === "key" ? "Proveedor" : "httpd,apache2";
+  for (const h of ["pkg", "oldest", "key"]) document.getElementById("pkg-hint-" + h).hidden = h !== kind;
+}
+F("dimension").addEventListener("change", syncTextField);
 
 function openEditor(id) {
   const c = charts.find((x) => x.id === id);
-  document.getElementById("editor-title").textContent = c ? t("Editar gráfico") : t("Nuevo gráfico");
+  document.getElementById("editor-title").textContent = c ? t("Edit chart") : t("New chart");
   F("id").value = c ? c.id : "";
   F("title").value = c ? c.title : "";
   form.querySelector(`input[name=kind][value=${c ? c.kind : "pie"}]`).checked = true;
   F("dimension").value = c ? c.dimension : "os";
   F("package").value = c ? c.package || "" : "";
+  F("max_results").value = c && c.max_results ? c.max_results : "";
   for (const f of FILTER_KEYS) { const v = c && c.filters[f]; setMulti("f_" + f, !v ? [] : Array.isArray(v) ? v : [v]); }
-  pkgField.hidden = F("dimension").value !== "package_version";
+  syncTextField();
   editor.showModal();
 }
 
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (F("dimension").value === "package_version" && !F("package").value.trim()) { alert(t("Indica el paquete.")); return; }
+  if (NEEDS_TEXT[F("dimension").value] && !F("package").value.trim()) {
+    alert(t(F("dimension").value === "tag_key" ? "Enter the tag key." : "Enter the package.")); return;
+  }
   const body = {
     title: F("title").value, kind: form.querySelector("input[name=kind]:checked").value,
-    dimension: F("dimension").value, package: F("package").value,
+    dimension: F("dimension").value, package: F("package").value, max_results: F("max_results").value,
     filters: Object.fromEntries(FILTER_KEYS.map((f) => [f, multiValues("f_" + f)])),
   };
   await api(F("id").value ? `/api/charts/${F("id").value}` : "/api/charts", body);
@@ -179,7 +205,7 @@ form.addEventListener("submit", async (e) => {
 });
 
 async function deleteChart(id) {
-  if (!confirm(t("¿Eliminar este gráfico?"))) return;
+  if (!confirm(t("Delete this chart?"))) return;
   await api(`/api/charts/${id}`, { delete: true });
   load();
 }

@@ -1,4 +1,4 @@
-"""Base de datos SQLite. Todo el acceso ocurre en el hilo del bucle asyncio."""
+"""SQLite database. All access happens on the asyncio event loop thread."""
 import hashlib
 import hmac
 import os
@@ -225,16 +225,46 @@ def _add_columns(c, table, columns):
 
 
 def _migrate(c):
-    # Credencial propia de un solo servidor (no aparece en la lista de credenciales compartidas)
+    # Credential owned by a single server (does not appear in the shared credentials list)
     _add_columns(c, "credentials", [("owner_vm_id", "INTEGER")])
-    # packages.container: NULL = paquete del host; si no, nombre del contenedor donde está
+    # packages.container: NULL = host package; otherwise, the name of the container it is in
     _add_columns(c, "packages", [("container", "TEXT")])
     _add_columns(c, "package_changes", [("container", "TEXT")])
     _add_columns(c, "vms", [("container_count", "INTEGER"), ("containers_error", "TEXT"),
                             ("pending_host_key", "TEXT"), ("jump_vm_id", "INTEGER")])
+    _add_columns(c, "charts", [("max_results", "INTEGER")])
     _add_columns(c, "audit", [("prev_hash", "TEXT"), ("hash", "TEXT"), ("keyed", "INTEGER")])
+    # Internal values used to be stored in Spanish; now they are English (the screens translate them).
+    # The audit log is not touched: its records are chained and signed.
+    for table, column, old, new in (
+            ("job_results", "status", "pendiente", "pending"), ("job_results", "status", "ejecutando", "running"),
+            ("job_results", "status", "fallo", "failed"), ("job_results", "status", "cancelado", "cancelled"),
+            ("package_changes", "change", "añadido", "added"), ("package_changes", "change", "actualizado", "updated"),
+            ("package_changes", "change", "eliminado", "removed"), ("packages", "source", "sonda", "probe")):
+        c.execute(f"UPDATE {table} SET {column}=? WHERE {column}=?", (new, old))
+    # Default charts and sample commands created in Spanish by older versions -> English
+    # (only if they are still exactly as created; the Spanish UI translates them back)
+    for old, new in (("Sistemas operativos", "Operating systems"), ("Versiones de kernel", "Kernel versions"),
+                     ("Antigüedad de la última actualización", "Age of the last update")):
+        c.execute("UPDATE charts SET title=? WHERE title=?", (new, old))
+    for old_name, old_desc, new_name, new_desc in (
+            ("Versión de un paquete", "Versión instalada del paquete indicado (RHEL y Debian/Ubuntu).",
+             "Package version", "Installed version of the given package (RHEL and Debian/Ubuntu)."),
+            ("¿Servicio activo?", "Estado de un servicio systemd.", "Is the service active?", "Status of a systemd service."),
+            ("Puertos en escucha con proceso", "Qué proceso escucha en cada puerto (necesita sudo para ver todos).",
+             "Listening ports with process", "Which process listens on each port (needs sudo to see all)."),
+            ("Usuarios con shell", "Cuentas que pueden iniciar sesión.", "Users with a shell", "Accounts that can log in."),
+            ("Últimos accesos", "Últimos 10 inicios de sesión.", "Last logins", "Last 10 logins."),
+            ("Espacio en disco", "Uso de los sistemas de ficheros.", "Disk space", "File system usage."),
+            ("¿Necesita reinicio?", "Comprueba si hay que reiniciar tras actualizar.",
+             "Reboot needed?", "Checks whether a reboot is needed after updating."),
+            ("Actualizaciones de seguridad pendientes", "Según la caché local de dnf/apt (no descarga nada).",
+             "Pending security updates", "According to the local dnf/apt cache (downloads nothing)."),
+            ("Reglas sudo", "Contenido efectivo de sudoers.", "sudo rules", "Effective sudoers content.")):
+        c.execute("UPDATE saved_commands SET name=?, description=? WHERE name=? AND description=?",
+                  (new_name, new_desc, old_name, old_desc))
     if not c.execute("SELECT 1 FROM settings WHERE key='tags_migrated'").fetchone():
-        # Las etiquetas antes eran texto libre separado por comas
+        # Tags used to be free text separated by commas
         for vm in c.execute("SELECT id, tags FROM vms WHERE tags IS NOT NULL AND tags<>''").fetchall():
             for name in {t.strip() for t in vm["tags"].split(",") if t.strip()}:
                 c.execute("INSERT OR IGNORE INTO tags(name) VALUES(?)", (name,))
@@ -242,7 +272,7 @@ def _migrate(c):
                 c.execute("INSERT OR IGNORE INTO vm_tags(vm_id, tag_id) VALUES(?,?)", (vm["id"], tag_id))
         c.execute("INSERT INTO settings(key, value) VALUES('tags_migrated', '1')")
     if not c.execute("SELECT 1 FROM settings WHERE key='catalog_migrated'").fetchone():
-        # Clientes y entornos pasan a ser listas gestionadas (antes eran texto libre)
+        # Clients and environments are now managed lists (they used to be free text)
         for kind in ("client", "environment"):
             c.execute(f"INSERT OR IGNORE INTO catalog(kind, name) SELECT DISTINCT '{kind}', {kind} FROM vms "
                       f"WHERE {kind} IS NOT NULL AND {kind}<>''")
@@ -250,7 +280,7 @@ def _migrate(c):
             c.execute("INSERT OR IGNORE INTO catalog(kind, name) VALUES('environment', ?)", (env,))
         c.execute("INSERT INTO settings(key, value) VALUES('catalog_migrated', '1')")
     if not c.execute("SELECT 1 FROM settings WHERE key='mojibake_fixed'").fetchone():
-        # Una versión guardó algunos textos con las tildes mal codificadas ("VersiÃ³n")
+        # A version saved some texts with badly encoded accents ("VersiÃ³n")
         for table, cols in (("saved_commands", ("name", "description", "command")), ("charts", ("title",)),
                             ("audit", ("action", "detail"))):
             for row in c.execute(f"SELECT rowid AS rid, {', '.join(cols)} FROM {table}").fetchall():
@@ -259,8 +289,8 @@ def _migrate(c):
                     c.execute(f"UPDATE {table} SET {', '.join(f'{col}=?' for col in cols)} WHERE rowid=?",
                               (*fixed, row["rid"]))
         c.execute("INSERT INTO settings(key, value) VALUES('mojibake_fixed', '1')")
-    # Siempre al final (después de cualquier corrección de textos): los registros de auditoría anteriores a
-    # la auditoría encadenada se encadenan sin firma para empezar desde aquí.
+    # Always last (after any text fix): audit records written before chained auditing get chained,
+    # without a signature, so the chain starts from here.
     if c.execute("SELECT 1 FROM audit WHERE hash IS NULL LIMIT 1").fetchone():
         prev = ""
         for r in c.execute("SELECT * FROM audit ORDER BY id").fetchall():
@@ -281,7 +311,7 @@ def fix_mojibake(text):
         return text
 
 
-# Contador que cambia cada vez que cambian los datos del inventario (para refrescar gráficos)
+# Counter that changes every time the inventory data changes (to refresh charts)
 data_version = 0
 
 
@@ -339,11 +369,11 @@ def set_setting(key, value):
        "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, str(value)))
 
 
-# ---------- auditoría encadenada ----------
-# Cada registro guarda el hash del anterior. Con la aplicación desbloqueada el hash es un HMAC con una
-# clave derivada de la contraseña maestra: quien edite la base de datos sin ella no puede recalcularlo.
-audit_key_fn = lambda: None   # lo configura main.py (vault.subkey("audit"))
-audit_listeners = []          # p. ej. el envío por syslog
+# ---------- chained audit log ----------
+# Each record stores the hash of the previous one. While the application is unlocked, the hash is an HMAC with a
+# key derived from the master password: whoever edits the database without it cannot recompute it.
+audit_key_fn = lambda: None   # set by main.py (vault.subkey("audit"))
+audit_listeners = []          # e.g. syslog forwarding
 
 
 def _audit_hash(prev, ts, action, detail, key):
@@ -369,20 +399,20 @@ def audit(action, detail=""):
 
 
 def verify_audit(key):
-    """Comprueba la cadena. Devuelve (registros revisados, firmados, lista de problemas)."""
+    """Checks the chain. Returns (records checked, signed, list of problems)."""
     problems, prev, checked, keyed = [], None, 0, 0
     for r in q("SELECT * FROM audit ORDER BY id"):
         checked += 1
         if prev is not None and (r["prev_hash"] or "") != prev:
-            problems.append((r["id"], "Falta un registro anterior o se ha modificado (cadena rota)"))
+            problems.append((r["id"], "A previous record is missing or was changed (broken chain)"))
         if r["keyed"]:
             keyed += 1
             if not key:
-                problems.append((r["id"], "Registro firmado: desbloquea la aplicación para verificarlo"))
+                problems.append((r["id"], "Signed record: unlock the application to verify it"))
             elif not hmac.compare_digest(_audit_hash(r["prev_hash"] or "", r["ts"], r["action"], r["detail"] or "", key),
                                          r["hash"] or ""):
-                problems.append((r["id"], "La firma no coincide: el registro se ha modificado"))
+                problems.append((r["id"], "The signature does not match: the record was changed"))
         elif _audit_hash(r["prev_hash"] or "", r["ts"], r["action"], r["detail"] or "", None) != (r["hash"] or ""):
-            problems.append((r["id"], "El hash no coincide: el registro se ha modificado"))
+            problems.append((r["id"], "The hash does not match: the record was changed"))
         prev = r["hash"] or ""
     return checked, keyed, problems

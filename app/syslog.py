@@ -1,4 +1,4 @@
-"""Envío de la auditoría a un SIEM o servidor syslog (RFC 5424 sobre UDP)."""
+"""Sends the audit log to a SIEM or syslog server (RFC 5424 over UDP)."""
 import json
 import socket
 from datetime import datetime
@@ -10,7 +10,7 @@ _sock = None
 
 
 def configure(target):
-    """target: 'host:puerto' o vacío para desactivar."""
+    """target: 'host:port', or empty to disable."""
     global _target, _sock
     _target = None
     if _sock:
@@ -38,7 +38,7 @@ def send(ts, action, detail, digest):
         try:
             _sock.sendto(message(ts, action, detail, digest), _target)
         except OSError:
-            pass  # el envío nunca debe impedir que la aplicación funcione
+            pass  # sending must never stop the application from working
 
 
 db.audit_listeners.append(send)

@@ -1,37 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="head">
-  <h1>Auditoría</h1>
-  <a class="btn" href="/audit?verify=1">Verificar integridad</a>
-  <a class="btn" href="/audit/export.jsonl">Descargar (JSONL con hashes)</a>
+  <h1>Audit log</h1>
+  <a class="btn" href="/audit?verify=1">Verify integrity</a>
+  <a class="btn" href="/audit/export.jsonl">Download (JSONL with hashes)</a>
 </div>
-<p class="muted">Registro de accesos, credenciales consultadas, terminales abiertas y comandos ejecutados (últimos 1000).
-  Cada registro está encadenado con el anterior; con la aplicación desbloqueada además va firmado, así que cualquier
-  borrado o modificación se detecta al verificar.</p>
-{% if request.query_params.get('error') %}<div class="alert bad">{{ request.query_params.get('error') }}</div>{% endif %}
+<p class="muted">Log of logins, credentials viewed, terminals opened and commands run (last 1000). Each record is chained to the previous one; while the application is unlocked it is also signed, so any deletion or change is detected on verification.</p>
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
 {% if verify %}
   {% if verify.total_problems == 0 %}
-  <div class="alert ok">Integridad correcta: {{ verify.checked }} registros revisados ({{ verify.keyed }} firmados), sin alteraciones.</div>
+  <div class="alert ok">Integrity OK: {{ verify.checked }} records checked ({{ verify.keyed }} signed), no tampering.</div>
   {% else %}
-  <div class="alert bad">Se han encontrado {{ verify.total_problems }} problemas en la cadena de auditoría:
-    <ul>{% for id, msg in verify.problems %}<li>Registro #{{ id }}: {{ msg }}</li>{% endfor %}</ul></div>
+  <div class="alert bad">{{ verify.total_problems }} problems found in the audit chain:
+    <ul>{% for id, msg in verify.problems %}<li>Record #{{ id }}: {{ msg }}</li>{% endfor %}</ul></div>
   {% endif %}
 {% endif %}
 <details class="card small" style="padding:10px 14px">
-  <summary><b>Enviar a un SIEM / syslog</b> {% if syslog_target %}<span class="badge b-ok">activo: {{ syslog_target }}</span>{% endif %}</summary>
+  <summary><b>Send to a SIEM / syslog</b> {% if syslog_target %}<span class="badge b-ok">active: {{ syslog_target }}</span>{% endif %}</summary>
   <form method="post" action="/audit/syslog" class="filters" style="margin-top:10px">
     <input name="target" value="{{ syslog_target }}" placeholder="siem.miempresa.local:514" style="width:260px">
-    <button class="primary" type="submit">Guardar</button>
+    <button class="primary" type="submit">Save</button>
   </form>
-  <div class="hint">Cada registro se envía al momento por UDP (RFC 5424, JSON con acción, detalle y hash). Vacío = desactivado.
-    Así queda una copia fuera de este PC que nadie puede borrar desde aquí.</div>
+  <div class="hint">Each record is sent immediately over UDP (RFC 5424, JSON with action, detail and hash). Empty = disabled. This keeps a copy outside this PC that nobody can delete from here.</div>
 </details>
-<div class="filters"><input data-filter="#audit-table" placeholder="Filtrar..."></div>
+<div class="filters"><input data-filter="#audit-table" placeholder="Filter..."></div>
 <div class="table-wrap"><table id="audit-table">
-  <thead><tr><th>Fecha</th><th>Acción</th><th>Detalle</th><th title="Firmado con la clave de auditoría">Firma</th></tr></thead>
+  <thead><tr><th>Date</th><th>Action</th><th>Details</th><th title="Signed with the audit key">Signed</th></tr></thead>
   <tbody>{% for r in rows %}<tr><td class="small" style="white-space:nowrap">{{ r.ts }}</td>
     <td><span class="badge {{ 'b-bad' if r.action in ('login_fallido', 'credencial_revelada', 'hostkey_reset', 'verificacion_fallida', 'comando_peligroso_confirmado', 'terminal_peligroso_confirmado') else 'b-warn' if 'comando' in r.action or 'terminal_abierta' == r.action else 'b-muted' }}" title="{{ r.action }}">{{ r.action|action_label }}</span></td>
     <td class="mono small">{{ r.detail }}</td>
-    <td class="small">{{ 'Sí' if r.keyed else '' }}</td></tr>{% endfor %}</tbody>
+    <td class="small">{{ 'Yes' if r.keyed else '' }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% endblock %}
