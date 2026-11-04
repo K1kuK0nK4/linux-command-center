@@ -43,8 +43,8 @@ on the servers: it connects over SSH, reads, and disconnects.
   result per server, filter and export. Keep a personal library of reusable commands with `{{variables}}`.
 - **Web terminal + SFTP.** A full terminal in the browser (also as `sudo su -`), with a side panel to browse,
   download and upload files over the same SSH connection.
-- **Built for many organizations.** Organizations, environments and coloured tags, multi-select filters
-  everywhere, and you can scan one organization at a time while you are on its VPN.
+- **Built for many organizations.** Organizations, environments and coloured tags, with multi-select filters
+  everywhere.
 - **Dashboard and custom charts.** OS, kernels, package versions, patch age, containers… They refresh by
   themselves and every bar or slice links to the servers behind it.
 
@@ -56,7 +56,7 @@ This tool holds credentials to other people's servers, so it is built defensivel
 |---|---|
 | **Runs on your machine only** | The web UI is bound to `127.0.0.1`. No cloud, no telemetry, nothing "phones home". |
 | **Nothing installed on servers** | Scans are read-only commands over SSH. The exact script is shown in the app (*Inventory → What does it do?*). |
-| **Encrypted vault** | Credentials are encrypted with AES-256-GCM using a key derived from your master password (scrypt). By default **nothing is stored**: the app asks for credentials when it connects. |
+| **Credentials are not stored by default** | The app asks for them when it connects and, only if you tick *Remember*, keeps them in memory until you lock it. SSH keys are supported. Saving them is an explicit choice per server: if you do, they are encrypted with AES-256-GCM (key derived from your master password with scrypt), never leave your machine and can only be revealed after re-entering the master password. |
 | **Step-up authentication** | Opening a terminal, running remote commands, changing files over SSH or revealing a password asks for the master password again (valid for 5 minutes). |
 | **Host-key verification** | The first SSH fingerprint of each server must be confirmed before any credential is sent (or imported from your `known_hosts`). A changed key blocks the connection. |
 | **Safe mode** | `reboot`, `rm -rf /`, `mkfs`, firewall flushes, stopping `sshd`, package installs, `docker rm`/`prune`… require typing **CONFIRM**, both in remote execution and in the terminal. |
@@ -129,7 +129,7 @@ docker compose up -d --build
    manager.
 2. **Add a server** (*Inventory → New server*), or import many at once from Excel/CSV
    (*Inventory → Import / Export*, a template is provided).
-3. Connect the organization's VPN and press **Scan**. On first contact, confirm the server's SSH fingerprint.
+3. Press **Scan** and enter the server's credentials when asked. On first contact, confirm its SSH fingerprint.
 4. **Search** a package and version, e.g. `openssh-server` `<` `1:9.6p1-3ubuntu13.3` filtered by *Ubuntu*.
 
 > **Tip for CVEs:** distributions backport fixes without changing the upstream version. Always compare against the
