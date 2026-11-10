@@ -34,26 +34,29 @@ sec ARCH; uname -m
 sec UPTIME; cat /proc/uptime 2>/dev/null
 sec REBOOTREQ; [ -f /var/run/reboot-required ] && echo yes
 if has dpkg-query; then
-  sec DPKG; dpkg-query -W -f='${Status}|${Package}|${Version}|${Architecture}\n' 2>/dev/null
+  sec DPKG; dpkg-query -W -f='${Status}|${Package}|${Version}|${Architecture}\n' </dev/null 2>/dev/null
   sec APTHIST
   { cat /var/log/apt/history.log 2>/dev/null; zcat /var/log/apt/history.log.*.gz 2>/dev/null; } \
     | awk '/^Start-Date:/{d=$2" "$3} /^Upgrade:/{print d" U"} /^Install:/{print d" I"}' | sort -r | head -n 20
   sec DPKGMTIME; stat -c %Y /var/lib/dpkg/status 2>/dev/null
-  sec APTUPG; has apt && apt list --upgradable 2>/dev/null
+  sec APTUPG; has apt && apt list --upgradable </dev/null 2>/dev/null
 elif has rpm; then
-  sec RPM; rpm -qa --qf '%{NAME}|%{EPOCH}|%{VERSION}|%{RELEASE}|%{ARCH}|%{INSTALLTIME}\n' 2>/dev/null
+  sec RPM; rpm -qa --qf '%{NAME}|%{EPOCH}|%{VERSION}|%{RELEASE}|%{ARCH}|%{INSTALLTIME}\n' </dev/null 2>/dev/null
   if has dnf; then PM=dnf; else PM=yum; fi
-  sec RPMUPG; timeout 60 $PM -q -C check-update 2>/dev/null; echo "EXIT=$?"
+  sec RPMUPG; timeout 60 $PM -q -C check-update </dev/null 2>/dev/null; echo "EXIT=$?"
   sec RPMSEC
-  if [ "$PM" = dnf ]; then timeout 60 dnf -q -C updateinfo list --security 2>/dev/null; echo "EXIT=$?"
-  else timeout 60 yum -q -C updateinfo list security 2>/dev/null; echo "EXIT=$?"; fi
+  if [ "$PM" = dnf ]; then timeout 60 dnf -q -C updateinfo list --security </dev/null 2>/dev/null; echo "EXIT=$?"
+  else timeout 60 yum -q -C updateinfo list security </dev/null 2>/dev/null; echo "EXIT=$?"; fi
 elif has apk; then
-  sec APK; apk info -v 2>/dev/null
+  sec APK; apk info -v </dev/null 2>/dev/null
 fi
-sec SNAP; has snap && snap list 2>/dev/null
-sec PORTS; ss -tuln 2>/dev/null || netstat -tuln 2>/dev/null
-sec SERVICES; has systemctl && systemctl list-units --type=service --state=running --no-legend --no-pager --plain 2>/dev/null
+sec SNAP; has snap && snap list </dev/null 2>/dev/null
+sec PORTS; ss -tuln </dev/null 2>/dev/null || netstat -tuln </dev/null 2>/dev/null
+sec SERVICES; has systemctl && systemctl list-units --type=service --state=running --no-legend --no-pager --plain </dev/null 2>/dev/null
 """
+# Every command runs with stdin closed (</dev/null): the script itself arrives through stdin
+# (/bin/sh -s), so a command that reads stdin (e.g. a dnf/yum plugin) would swallow the rest
+# of the script and the scan would stop half-way without any error.
 
 # Script run INSIDE each running container (read-only)
 CONTAINER_SCRIPT = SCRIPT_HEAD + r"""
@@ -115,7 +118,7 @@ def probe_block(probes):
     lines = ["sec PROBES"]
     for p in probes:
         lines.append(f"printf '%s\\n' {shlex.quote(PROBE_MARK + p['name'])}")
-        lines.append(f"if has {shlex.quote(p['bin'])}; then $T sh -c {shlex.quote(p['command'])} 2>&1 | head -n 5; fi")
+        lines.append(f"if has {shlex.quote(p['bin'])}; then $T sh -c {shlex.quote(p['command'])} </dev/null 2>&1 | head -n 5; fi")
     return "\n".join(lines) + "\n"
 
 
