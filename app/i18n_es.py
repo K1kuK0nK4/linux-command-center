@@ -1092,3 +1092,11 @@ ES.update({
     "Any origin": "Cualquier origen",
     "Only packages that endoflife.date tracks (languages, databases, web servers, runtimes…) are listed. The rest (libraries and system tools) follow the operating system: while it is supported, the distribution keeps patching them.": "Solo aparecen los paquetes que sigue endoflife.date (lenguajes, bases de datos, servidores web, entornos de ejecución…). El resto (librerías y herramientas del sistema) siguen al sistema operativo: mientras tenga soporte, la distribución los sigue parcheando."
 })
+
+# Package search: end of life
+ES.update({
+    "Not tracked": "Sin seguimiento",
+    "Distribution": "Distribución",
+    "Origin": "Origen",
+    "endoflife.date does not track this package: it follows the operating system": "endoflife.date no sigue este paquete: va con el soporte del sistema operativo"
+})

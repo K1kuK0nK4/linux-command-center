@@ -547,7 +547,7 @@ async def dashboard_widgets_save(request: Request):
 # ---------- servers ----------
 
 MULTI_FILTERS = ("client", "environment", "tag", "os_family", "os_name", "os", "upd_age", "sec", "eol",
-                 "status", "containers")
+                 "status", "containers", "support", "origin")
 
 # Chart buckets (clicking a bar opens the inventory filtered by that bucket)
 _DAYS = "(julianday('now','localtime') - julianday(vms.last_pkg_update))"
@@ -1393,13 +1393,26 @@ def run_search(p):
     rows = db.q(f"""SELECT v.id vm_id, v.name vm_name, v.host, v.client, v.environment, v.last_ok_at,
                     COALESCE(c.os_name, v.os_name) os_name, COALESCE(c.os_version, v.os_version) os_version,
                     CASE WHEN p.source='probe' THEN '' ELSE COALESCE(c.os_family, v.os_family) END os_family,
-                    p.name, p.version, p.arch, p.source, p.container, c.image
+                    p.name, p.version, p.arch, p.source, p.container, p.vendor, c.image, v.os_id
                     FROM packages p JOIN vms v ON v.id=p.vm_id
                     LEFT JOIN containers c ON c.vm_id=p.vm_id AND c.name=p.container
                     WHERE {' AND '.join(where)}
                     ORDER BY v.client, v.name, p.container IS NOT NULL, p.container, p.name LIMIT 20000""", args)
     op, ver = p.get("op"), (p.get("ver") or "").strip()
-    return [r for r in rows if versions.matches(r["version"], op, ver, r["os_family"])]
+    out = []
+    for r in rows:
+        if not versions.matches(r["version"], op, ver, r["os_family"]):
+            continue
+        r = dict(r)
+        # End of life of the package (only products tracked by endoflife.date) and who built it
+        product = eol.product_for(r["name"])
+        st = eol.status(product, r["version"]) if product else {"state": "none", "eol": None, "cycle": None}
+        third = eol.third_party(r["os_id"], r) if not r["container"] else None
+        r.update(eol_product=product, eol_state=st["state"], eol_date=st["eol"], eol_cycle=st["cycle"],
+                 origin="third" if third else "distro" if third is False else "unknown")
+        out.append(r)
+    support, origin = as_list(p.get("support")), as_list(p.get("origin"))
+    return [r for r in out if (not support or r["eol_state"] in support) and (not origin or r["origin"] in origin)]
 
 
 @app.get("/search")
@@ -1415,11 +1428,18 @@ async def search(request: Request):
 async def search_csv(request: Request):
     rows = run_search(query_dict(request))
     return csv_response("package_search.csv", ["Server", "Host", "Organization", "Environment", "Where", "Image", "OS", "OS version",
-                                          "Package", "Version", "Architecture", "Source", "Last successful scan"],
+                                          "Package", "Version", "Architecture", "Source", "Last successful scan",
+                                          "End of security support", "Support status", "Origin"],
                         [(r["vm_name"], r["host"], r["client"], r["environment"],
-                          f"contenedor {r['container']}" if r["container"] else "host", r["image"] or "",
+                          f"container {r['container']}" if r["container"] else "host", r["image"] or "",
                           r["os_name"], r["os_version"], r["name"], r["version"], r["arch"], r["source"],
-                          r["last_ok_at"]) for r in rows])
+                          r["last_ok_at"], r["eol_date"] or "", SUPPORT_LABELS[r["eol_state"]],
+                          ORIGIN_LABELS[r["origin"]]) for r in rows])
+
+
+SUPPORT_LABELS = {"eol": "End of life", "soon": "Ends soon", "ok": "Supported", "unknown": "Unknown",
+                  "none": "Not tracked"}
+ORIGIN_LABELS = {"third": "Third party", "distro": "Distribution", "unknown": "?"}
 
 
 @app.get("/api/packages/suggest")

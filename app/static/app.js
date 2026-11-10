@@ -45,6 +45,7 @@ document.querySelectorAll("th.sortable").forEach((th) => {
       return asc ? c : -c;
     });
     rows.forEach((r) => table.tBodies[0].appendChild(r));
+    if (table.repage) table.repage();   // paginated tables go back to page 1 with the new order
   });
 });
 

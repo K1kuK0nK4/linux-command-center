@@ -82,31 +82,22 @@
 <div class="card">
   <h2>Support status</h2>
   {% if not eol_ready %}<p class="muted small">No end-of-life data yet: download it in <a href="/settings#online">Settings → Online data</a>.</p>{% else %}
-  {% from "_multi.html" import multi %}
-  {% set years = [] %}
-  {% for s in [eol_os] + eol_apps %}{% set y = (s.eol or '')[:4] or 'none' %}{% if y not in years %}{% set _ = years.append(y) %}{% endif %}{% endfor %}
-  {% set year_options = [] %}
-  {% for y in years|reject('equalto', 'none')|sort %}{% set _ = year_options.append((y, y)) %}{% endfor %}
-  {% if 'none' in years %}{% set _ = year_options.append(("none", "(no date)")) %}{% endif %}
-  <div class="row" id="sup-filters" style="margin-bottom:10px">
-    {{ multi("sup_end", "Any end date", year_options, [], False) }}
-    {{ multi("sup_state", "Any status", [("eol", "End of life"), ("soon", "Ends soon"), ("ok", "Supported"), ("unknown", "Unknown")], [], False) }}
-    {{ multi("sup_origin", "Any origin", [("os", "operating system"), ("third", "Third party"), ("distro", "Distribution (patched by the vendor)"), ("unknown", "?")], [], False) }}
-  </div>
+  {% set STATE_ORDER = {"eol": 0, "soon": 1, "ok": 2, "unknown": 3} %}
+  {# data-sort: dates as text (no date = after any date, already ended without date = before), status and origin by severity #}
   <table class="paged" data-page-size="10" id="support">
-    <thead><tr><th>Component</th><th>Version</th><th>Cycle</th><th>End of security support</th><th>Status</th><th>Origin</th></tr></thead>
+    <thead><tr><th>Component</th><th>Version</th><th>Cycle</th><th class="sortable">End of security support</th>
+      <th class="sortable">Status</th><th class="sortable">Origin</th></tr></thead>
     <tbody>
-      <tr data-end="{{ (eol_os.eol or '')[:4] or 'none' }}" data-state="{{ eol_os.state }}" data-origin="os">
-        <td><b>{{ vm.os_name }}</b> <span class="muted small">operating system</span></td><td>{{ vm.os_version or '—' }}</td>
+      <tr><td><b>{{ vm.os_name }}</b> <span class="muted small">operating system</span></td><td>{{ vm.os_version or '—' }}</td>
         <td>{{ eol_os.cycle or '—' }}</td>
-        <td>{{ eol_os.eol or ('—' if eol_os.state != 'eol' else 'already ended') }}{% if eol_os.extended %} <span class="muted small">(extended support until {{ eol_os.extended }})</span>{% endif %}</td>
-        <td>{{ support_badge(eol_os) }}</td><td></td></tr>
+        <td data-sort="d{{ eol_os.eol or ('0000' if eol_os.state == 'eol' else '9999') }}">{{ eol_os.eol or ('—' if eol_os.state != 'eol' else 'already ended') }}{% if eol_os.extended %} <span class="muted small">(extended support until {{ eol_os.extended }})</span>{% endif %}</td>
+        <td data-sort="{{ STATE_ORDER[eol_os.state] }}">{{ support_badge(eol_os) }}</td><td data-sort="0"></td></tr>
       {% for a in eol_apps %}
-      <tr data-end="{{ (a.eol or '')[:4] or 'none' }}" data-state="{{ a.state }}"
-          data-origin="{{ 'third' if a.third_party else 'distro' if a.third_party is false else 'unknown' }}"><td>{{ a.product }} <span class="muted small mono">{{ a.package }}</span></td><td class="mono small">{{ a.version }}</td>
-        <td>{{ a.cycle or '—' }}</td><td>{{ a.eol or ('—' if a.state != 'eol' else 'already ended') }}</td>
-        <td>{{ support_badge(a) }}</td>
-        <td class="small">{% if a.third_party %}<span class="badge b-warn" title="{{ a.vendor }}">Third party</span>
+      <tr><td>{{ a.product }} <span class="muted small mono">{{ a.package }}</span></td><td class="mono small">{{ a.version }}</td>
+        <td>{{ a.cycle or '—' }}</td>
+        <td data-sort="d{{ a.eol or ('0000' if a.state == 'eol' else '9999') }}">{{ a.eol or ('—' if a.state != 'eol' else 'already ended') }}</td>
+        <td data-sort="{{ STATE_ORDER[a.state] }}">{{ support_badge(a) }}</td>
+        <td class="small" data-sort="{{ 1 if a.third_party else 2 if a.third_party is false else 3 }}">{% if a.third_party %}<span class="badge b-warn" title="{{ a.vendor }}">Third party</span>
           {% elif a.third_party is false %}<span class="muted" title="{{ a.vendor or '' }}">Distribution (patched by the vendor)</span>
           {% else %}<span class="muted" title="Rescan the server to know who built this package">?</span>{% endif %}</td></tr>
       {% endfor %}
@@ -116,18 +107,6 @@
   <p class="hint">Only packages that endoflife.date tracks (languages, databases, web servers, runtimes…) are listed.
     The rest (libraries and system tools) follow the operating system: while it is supported, the distribution
     keeps patching them.</p>
-  <script>
-    // Support status filters: a row is shown when it matches every filter with something ticked
-    document.getElementById("sup-filters").addEventListener("multi-change", () => {
-      const f = { end: multiValues("sup_end"), state: multiValues("sup_state"), origin: multiValues("sup_origin") };
-      const table = document.getElementById("support");
-      [...table.tBodies[0].rows].forEach((r) => {
-        const ok = Object.entries(f).every(([k, vals]) => !vals.length || vals.includes(r.dataset[k]));
-        r.dataset.out = ok ? "" : "1";
-      });
-      table.repage();
-    });
-  </script>
   {% endif %}
 </div>
 {% endif %}

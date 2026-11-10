@@ -18,6 +18,8 @@
     <div><label>Environment</label>{{ multi("environment", "All", [("__none__", "(no environment)")] + zip_pairs(envs), p.environment) }}</div>
     <div><label>Tag</label>{{ multi("tag", "All", tag_options(tags), p.tag) }}</div>
     <div><label>Distribution</label>{{ multi("os_name", "All", distro_options(True), p.os_name) }}</div>
+    <div><label>Support status</label>{{ multi("support", "All", [("eol", "End of life"), ("soon", "Ends soon"), ("ok", "Supported"), ("unknown", "Unknown"), ("none", "Not tracked")], p.support) }}</div>
+    <div><label>Origin</label>{{ multi("origin", "All", [("third", "Third party"), ("distro", "Distribution"), ("unknown", "?")], p.origin) }}</div>
     <div><button class="primary" type="submit">Search</button></div>
   </div>
   <div class="filters" style="margin:10px 0 0">
@@ -51,7 +53,8 @@
 <div class="filters"><input data-filter="#res-table" placeholder="Filter results..."></div>
 <div class="table-wrap"><table id="res-table">
   <thead><tr><th class="sortable">Server</th><th class="sortable">Organization</th><th class="sortable">Where</th><th class="sortable">OS</th><th class="sortable">Package</th>
-    <th class="sortable">Installed version</th><th class="sortable">Arch.</th><th class="sortable">Last scan</th></tr></thead>
+    <th class="sortable">Installed version</th><th class="sortable">Arch.</th><th class="sortable">Last scan</th>
+    <th class="sortable">End of security support</th><th class="sortable">Status</th><th class="sortable">Origin</th></tr></thead>
   <tbody>{% for r in results %}<tr>
     <td><a href="/vms/{{ r.vm_id }}">{{ r.vm_name }}</a><div class="muted small mono">{{ r.host }}</div></td>
     <td>{{ r.client or '' }}{% if r.environment %} <span class="muted small">{{ r.environment }}</span>{% endif %}</td>
@@ -60,6 +63,17 @@
     <td>{{ r.os_name or '' }} {{ r.os_version or '' }}</td>
     <td>{{ r.name }}{% if r.source == 'probe' %} <span class="badge b-info" title="Version obtained by running the program">detection</span>{% endif %}</td>
     <td class="mono">{{ r.version }}</td><td>{{ r.arch }}</td><td class="small">{{ r.last_ok_at|ago }}</td>
+    <td class="small" data-sort="d{{ r.eol_date or ('0000' if r.eol_state == 'eol' else '9999') }}">{{ r.eol_date or ('already ended' if r.eol_state == 'eol' else '—') }}</td>
+    <td data-sort="{{ {'eol': 0, 'soon': 1, 'ok': 2, 'unknown': 3, 'none': 4}[r.eol_state] }}">
+      {% if r.eol_state == 'eol' %}<span class="badge st b-bad">End of life</span>
+      {% elif r.eol_state == 'soon' %}<span class="badge st b-warn">Ends soon</span>
+      {% elif r.eol_state == 'ok' %}<span class="badge st b-ok">Supported</span>
+      {% elif r.eol_state == 'unknown' %}<span class="badge st b-muted">Unknown</span>
+      {% else %}<span class="muted small" title="endoflife.date does not track this package: it follows the operating system">Not tracked</span>{% endif %}</td>
+    <td class="small" data-sort="{{ {'third': 1, 'distro': 2, 'unknown': 3}[r.origin] }}">
+      {% if r.origin == 'third' %}<span class="badge b-warn" title="{{ r.vendor }}">Third party</span>
+      {% elif r.origin == 'distro' %}<span class="muted" title="{{ r.vendor }}">Distribution</span>
+      {% else %}<span class="muted" title="Rescan the server to know who built this package">?</span>{% endif %}</td>
   </tr>{% endfor %}</tbody>
 </table></div>
 {% endif %}
