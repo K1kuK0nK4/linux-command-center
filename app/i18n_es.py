@@ -1032,3 +1032,63 @@ ES.update({"By organization": "Por organización"})
 ES.update({"Last OK scan": "Último escaneo OK"})
 
 ES.update({"{n} err.": "{n} err.", "Servers with errors in the last scan": "Servidores con error en el último escaneo"})
+
+# End of life
+ES.update({
+    "OS without security support": "SO sin soporte de seguridad",
+    "(+{n} soon)": "(+{n} pronto)",
+    "Online data (end of life)": "Datos en línea (fin de soporte)",
+    "Support dates of operating systems and applications come from": "Las fechas de soporte de sistemas operativos y aplicaciones vienen de",
+    ". Only the list of release cycles of each product is downloaded (e.g.": ". Solo se descarga la lista de versiones de cada producto (p. ej.",
+    "): nothing about your inventory leaves this computer. Without Internet the last download is used.": "): nada de tu inventario sale de este equipo. Sin Internet se usa la última descarga.",
+    "Last update:": "Última actualización:",
+    "· last attempt {t}": "· último intento {t}",
+    "Could not download:": "No se pudo descargar:",
+    "Update now": "Actualizar ahora",
+    "Update automatically once a day": "Actualizar automáticamente una vez al día",
+    "Proxy": "Proxy",
+    "Applications to watch": "Aplicaciones a vigilar",
+    "One per line:": "Una por línea:",
+    "(wildcards allowed, e.g.": "(se admiten comodines, p. ej.",
+    "). The product is its name on endoflife.date. Distribution packages may still get security fixes from the vendor after the upstream end of life, so applications are shown as a warning.": "). El producto es su nombre en endoflife.date. Los paquetes de la distribución pueden seguir recibiendo parches del fabricante tras el fin de soporte del proyecto, por eso las aplicaciones se muestran como aviso.",
+    "End of life": "Sin soporte",
+    "Ends soon": "Termina pronto",
+    "Supported": "Con soporte",
+    "Unknown": "Desconocido",
+    "Support status": "Estado del soporte",
+    "No end-of-life data yet: download it in": "Aún no hay datos de fin de soporte: descárgalos en",
+    "Settings → Online data": "Ajustes → Datos en línea",
+    "Component": "Componente",
+    "Cycle": "Ciclo",
+    "End of security support": "Fin del soporte de seguridad",
+    "operating system": "sistema operativo",
+    "(extended support until {d})": "(soporte extendido hasta {d})",
+    "Distribution packages may still get security fixes from the vendor": "Los paquetes de la distribución pueden seguir recibiendo parches del fabricante",
+    "upstream": "del proyecto",
+    "EOL soon": "EOL pronto",
+    "already ended": "ya terminado",
+    "End of security support: {d}": "Fin del soporte de seguridad: {d}",
+    "End-of-life data updated ({n} products)": "Datos de fin de soporte actualizados ({n} productos)",
+    "OS support (end of life)": "Soporte del SO (fin de soporte)",
+    "Support ends within 90 days": "El soporte termina en menos de 90 días",
+    "The proxy must look like http://proxy.example.com:8080": "El proxy debe tener la forma http://proxy.ejemplo.com:8080",
+    "Online data settings changed": "Ajustes de datos en línea modificados",
+    "Online data updated: {a} products, {b} errors": "Datos en línea actualizados: {a} productos, {b} errores"
+})
+
+# End of life: automatic detection
+ES.update({
+    "Origin": "Origen",
+    "Third party": "De terceros",
+    "Distribution (patched by the vendor)": "De la distribución (la parchea el fabricante)",
+    "Rescan the server to know who built this package": "Vuelve a escanear el servidor para saber quién publica este paquete",
+    ". Its public catalog is downloaded in a single request, the same for everyone: nothing about your inventory leaves this computer. Applications are detected automatically from the scanned packages. Without Internet the last download is used.": ". Su catálogo público se descarga en una sola petición, igual para todo el mundo: nada de tu inventario sale de este equipo. Las aplicaciones se detectan solas a partir de los paquetes escaneados. Sin Internet se usa la última descarga."
+})
+
+# Support status filters
+ES.update({
+    "Any end date": "Cualquier fecha de fin",
+    "(no date)": "(sin fecha)",
+    "Any origin": "Cualquier origen",
+    "Only packages that endoflife.date tracks (languages, databases, web servers, runtimes…) are listed. The rest (libraries and system tools) follow the operating system: while it is supported, the distribution keeps patching them.": "Solo aparecen los paquetes que sigue endoflife.date (lenguajes, bases de datos, servidores web, entornos de ejecución…). El resto (librerías y herramientas del sistema) siguen al sistema operativo: mientras tenga soporte, la distribución los sigue parcheando."
+})

@@ -24,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
 
-from . import (backup, charts, collector, db, files, i18n, jobs, safety, ssh, syslog, terminal, transfer,
+from . import (backup, charts, collector, db, eol, files, i18n, jobs, safety, ssh, syslog, terminal, transfer,
                versions)
 from .vault import derive as derive_key
 from .vault import vault
@@ -172,6 +172,7 @@ templates.env.globals["prefs"] = prefs
 templates.env.globals["zip_pairs"] = lambda values: [(v, v) for v in values]
 templates.env.globals["tag_options"] = lambda tags: [(str(t["id"]), f"{t['name']} ({t['vm_count']})") for t in tags]
 templates.env.globals["VM_COLUMNS"] = VM_COLUMNS
+templates.env.globals["os_eol"] = eol.os_status   # OS end-of-life status of a server
 
 
 def detected(col, containers=False):
@@ -236,8 +237,11 @@ def get_or_create_tag(name):
 def set_vm_tags(vm_id, tag_ids, new_names=""):
     ids = {int(t) for t in tag_ids if str(t).isdigit()}
     ids |= {get_or_create_tag(n) for n in new_names.split(",") if n.strip()}
+    auto = eol.auto_tag_ids()   # the EOL tags are managed automatically: editing a server keeps them as they are
+    ids -= auto
     with db.tx() as c:
-        c.execute("DELETE FROM vm_tags WHERE vm_id=?", (vm_id,))
+        c.execute(f"DELETE FROM vm_tags WHERE vm_id=? AND tag_id NOT IN ({','.join('?' * len(auto)) or '-1'})",
+                  (vm_id, *auto))
         c.executemany("INSERT OR IGNORE INTO vm_tags(vm_id, tag_id) VALUES(?,?)", [(vm_id, t) for t in ids])
 
 
@@ -255,7 +259,8 @@ FLASH = {
     "saved": "Settings saved",
     "hostkeys_accepted": "{n} fingerprints accepted",
     "known_hosts_saved": "Saved. {n} servers took their fingerprint from known_hosts.",
-    "probe_deleted": "Detection deleted",
+    "online_updated": "End-of-life data updated ({n} products)",
+    "probe_deleted":"Detection deleted",
     "master_changed": "Master password changed",
     "renamed": "'{a}' renamed to '{b}' in {n} servers",
     "deleted_client": "'{a}' deleted; {n} servers are left without an organization",
@@ -506,7 +511,9 @@ async def dashboard(request: Request):
     stale = db.q("SELECT id, name, client, last_pkg_update FROM vms WHERE last_pkg_update IS NOT NULL "
                  "ORDER BY last_pkg_update LIMIT 10")
     seed_charts()
+    os_states = [eol.os_status(v)["state"] for v in db.q("SELECT os_id, os_name, os_version FROM vms WHERE os_name IS NOT NULL")]
     return render(request, "dashboard.html", total=total, stats=stats, clients=clients, errors=errors, stale=stale,
+                  eol_count=os_states.count("eol"), eol_soon=os_states.count("soon"),
                   dimensions=charts.DIMENSIONS, kinds=charts.KINDS, tags=all_tags(),
                   all_clients=distinct("client"), envs=distinct("environment"),
                   widgets=dashboard_widgets(), widget_names=WIDGETS, ranking_size=charts.RANKING_SIZE)
@@ -539,7 +546,8 @@ async def dashboard_widgets_save(request: Request):
 
 # ---------- servers ----------
 
-MULTI_FILTERS = ("client", "environment", "tag", "os_family", "os_name", "os", "upd_age", "sec")
+MULTI_FILTERS = ("client", "environment", "tag", "os_family", "os_name", "os", "upd_age", "sec", "eol",
+                 "status", "containers")
 
 # Chart buckets (clicking a bar opens the inventory filtered by that bucket)
 _DAYS = "(julianday('now','localtime') - julianday(vms.last_pkg_update))"
@@ -581,10 +589,11 @@ def multi_where(params, where, args, prefix, columns=None):
             column = (columns or {}).get(field, default)
             where.append(in_clause(f"COALESCE({column},'')", vals))
             args += ["" if v == NONE_VALUE else v for v in vals]
-    tags = [int(t) for t in as_list(params.get("tag")) if str(t).isdigit()]
-    if tags:
-        where.append(f"{prefix}.id IN (SELECT vm_id FROM vm_tags WHERE {in_clause('tag_id', tags)})")
-        args += tags
+    tags = sorted({int(t) for t in as_list(params.get("tag")) if str(t).isdigit()})
+    if tags:   # several tags: the server must have all of them
+        where.append(f"{prefix}.id IN (SELECT vm_id FROM vm_tags WHERE {in_clause('tag_id', tags)} "
+                     f"GROUP BY vm_id HAVING COUNT(DISTINCT tag_id)=?)")
+        args += [*tags, len(tags)]
 
 
 def vm_filters(params):
@@ -600,9 +609,10 @@ def vm_filters(params):
         if params.get(field):
             where.append(f"COALESCE(vms.{field},'')=?")
             args.append("" if params[field] == NONE_VALUE else params[field])
-    if params.get("status"):
-        where.append("vms.last_scan_status=?")
-        args.append(params["status"])
+    statuses = [s for s in as_list(params.get("status")) if s in ("ok", "error", "never")]
+    if statuses:
+        where.append(in_clause("vms.last_scan_status", statuses))
+        args += statuses
     for key, ranges in (("upd_age", UPD_AGE), ("sec", SEC)):
         conds = [ranges[v] for v in as_list(params.get(key)) if v in ranges]
         if conds:
@@ -615,9 +625,10 @@ def vm_filters(params):
         where.append("vms.reboot_required=0 AND vms.last_ok_at IS NOT NULL")
     elif params.get("reboot"):
         where.append("vms.reboot_required=1")
-    if params.get("containers") == "yes":
+    containers = set(as_list(params.get("containers")))   # both ticked = no filter
+    if containers == {"yes"}:
         where.append("vms.container_count IS NOT NULL")
-    elif params.get("containers") == "no":
+    elif containers == {"no"}:
         where.append("vms.container_count IS NULL")
     return ("WHERE " + " AND ".join(where)) if where else "", args
 
@@ -643,6 +654,9 @@ async def vm_list(request: Request):
     where, args = vm_filters(p)
     vms = db.q(f"SELECT vms.*, credentials.name cred_name FROM vms LEFT JOIN credentials ON credentials.id=credential_id "
                f"{where} ORDER BY client, name", args)
+    if p.get("eol"):    # OS support status (computed from the downloaded end-of-life data)
+        wanted = set(as_list(p["eol"]))
+        vms = [v for v in vms if eol.os_status(v)["state"] in wanted]
     return render(request, "vms.html", vms=vms, p=p, clients=distinct("client"), envs=distinct("environment"),
                   running=collector.running, tags=all_tags(), vm_tags=tags_by_vm(),
                   pending_hostkeys=db.q1("SELECT COUNT(*) n FROM vms WHERE pending_host_key IS NOT NULL")["n"])
@@ -947,6 +961,7 @@ async def vm_detail(request: Request, vm_id: int):
         return redirect("/vms")
     jump = db.q1("SELECT id, name, host FROM vms WHERE id=?", (vm["jump_vm_id"],)) if vm["jump_vm_id"] else None
     return render(request, "vm_detail.html", vm=vm, vm_tags=tags_by_vm().get(vm_id, []), jump=jump,
+                  eol_os=eol.os_status(vm), eol_apps=eol.app_status(vm_id, vm["os_id"]), eol_ready=eol.last_update() is not None,
                   packages=db.q("SELECT * FROM packages WHERE vm_id=? ORDER BY container IS NOT NULL, container, name",
                                 (vm_id,)),
                   containers=db.q("SELECT * FROM containers WHERE vm_id=? ORDER BY state<>'running', name", (vm_id,)),
@@ -1761,6 +1776,10 @@ def settings_view(request, error=None):
                   safe_mode=safety.enabled(), safe_rules=safety.RULES, p=prefs(), accents=ACCENTS,
                   probes=db.q("SELECT * FROM probes ORDER BY name"),
                   hostkey_policy=db.get_setting("hostkey_policy", "confirm"),
+                  online={"enabled": eol.enabled(), "proxy": db.get_setting("http_proxy", ""),
+                          "last": eol.last_update(),
+                          "attempt": db.get_setting("online_last_attempt", None),
+                          "errors": json.loads(db.get_setting("online_errors", "{}") or "{}")},
                   known_hosts_lines=len([l for l in db.get_setting("known_hosts", "").splitlines()
                                          if l.strip() and not l.startswith("#")]),
                   date_formats=DATE_FORMATS, timezones=TIMEZONES,
@@ -1818,6 +1837,25 @@ async def settings_probe_delete(pid: int):
         db.ex("DELETE FROM probes WHERE id=?", (pid,))
         db.audit("sondas", f"Version detection deleted: {p['name']}")
     return flash("/settings", "probe_deleted", "#probes")
+
+
+@app.post("/settings/online")
+async def settings_online(request: Request):
+    form = await request.form()
+    proxy = form.get("http_proxy", "").strip()
+    if proxy and not re.fullmatch(r"https?://[\w.\-@:%]+(:\d+)?/?", proxy):
+        return settings_view(request, error="The proxy must look like http://proxy.example.com:8080")
+    db.set_setting("online_updates", "1" if form.get("online_updates") else "0")
+    db.set_setting("http_proxy", proxy)
+    db.audit("ajustes", "Online data settings changed")
+    return flash("/settings", "saved", "#online")
+
+
+@app.post("/settings/online/refresh")
+async def settings_online_refresh():
+    data, errors = await refresh_online_data()
+    db.audit("ajustes", f"Online data updated: {len(data)} products, {len(errors)} errors")
+    return flash("/settings", "online_updated", "#online", n=len(data))
 
 
 @app.post("/settings/safe-mode")
@@ -2168,8 +2206,26 @@ def maybe_auto_lock():
     return False
 
 
+async def refresh_online_data():
+    """Downloads the public end-of-life data (only product release cycles; nothing from the inventory)."""
+    data, index, errors = await asyncio.to_thread(eol.download, db.get_setting("http_proxy", ""))
+    eol.store(data, index)
+    eol.sync_tags()
+    db.set_setting("online_last_attempt", db.now())
+    db.set_setting("online_errors", json.dumps(errors))
+    return data, errors
+
+
+def online_attempt_age():
+    last = db.get_setting("online_last_attempt", None)
+    try:
+        return (datetime.now(db.TZ) - datetime.strptime(last, "%Y-%m-%d %H:%M:%S").replace(tzinfo=db.TZ)).total_seconds()
+    except (TypeError, ValueError):
+        return None
+
+
 async def maintenance_loop():
-    """Every minute: lock on inactivity. Once a day: cleanup of old history."""
+    """Every minute: lock on inactivity. Once a day: cleanup of old history and online data refresh."""
     last_cleanup = 0.0
     while True:
         await asyncio.sleep(60)
@@ -2180,6 +2236,9 @@ async def maintenance_loop():
                 n = apply_retention()
                 if n:
                     db.audit("limpieza_historial", f"{n} old records deleted")
+            age = online_attempt_age()
+            if vault.initialized and eol.enabled() and (age is None or age > 86400):
+                await refresh_online_data()
         except Exception:
             pass
 

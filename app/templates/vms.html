@@ -18,13 +18,8 @@
   {{ multi("environment", "All environments", [("__none__", "(no environment)")] + zip_pairs(envs), p.environment) }}
   {{ multi("tag", "All tags", tag_options(tags), p.tag) }}
   {{ multi("os_name", "All distributions", distro_options(), p.os_name) }}
-  <select name="status"><option value="">Any status</option>
-    <option value="ok" {{ 'selected' if p.status == 'ok' }}>Scan OK</option>
-    <option value="error" {{ 'selected' if p.status == 'error' }}>Scan failed</option>
-    <option value="never" {{ 'selected' if p.status == 'never' }}>Never scanned</option></select>
-  <select name="containers"><option value="">With and without containers</option>
-    <option value="yes" {{ 'selected' if p.containers == 'yes' }}>With Docker/Podman</option>
-    <option value="no" {{ 'selected' if p.containers == 'no' }}>Without Docker/Podman</option></select>
+  {{ multi("status", "Any status", [("ok", "Scan OK"), ("error", "Scan failed"), ("never", "Never scanned")], p.status) }}
+  {{ multi("containers", "With and without containers", [("yes", "With Docker/Podman"), ("no", "Without Docker/Podman")], p.containers) }}
   <label class="inline"><input type="checkbox" name="reboot" value="1" {{ 'checked' if p.reboot }}> Reboot required</label>
   <button type="submit">Filter</button>
   {% if request.url.query %}<a href="/vms">Clear filters</a>{% endif %}
@@ -61,7 +56,9 @@
         {% if c == 'client' %}
       <td>{{ v.client or '' }}{% if v.environment and 'environment' not in cols %}<div class="muted small">{{ v.environment }}</div>{% endif %}</td>
         {% elif c == 'environment' %}<td>{{ v.environment or '' }}</td>
-        {% elif c == 'os' %}<td>{{ v.os_name or '—' }} {{ v.os_version or '' }}</td>
+        {% elif c == 'os' %}<td>{{ v.os_name or '—' }} {{ v.os_version or '' }}
+          {% set s = os_eol(v) %}{% if s.state == 'eol' %} <span class="badge b-bad" title="End of security support: {{ s.eol or 'yes' }}">EOL</span>
+          {% elif s.state == 'soon' %} <span class="badge b-warn" title="End of security support: {{ s.eol }}">EOL soon</span>{% endif %}</td>
         {% elif c == 'kernel' %}
       <td class="mono">{{ v.kernel or '—' }}{% if v.reboot_required and 'reboot' not in cols %} <span class="badge b-warn" title="Reboot required">reboot</span>{% endif %}</td>
         {% elif c == 'pkgs' %}<td data-sort="{{ v.pkg_count or 0 }}">{{ v.pkg_count or '—' }}</td>

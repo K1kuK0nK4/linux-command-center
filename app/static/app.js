@@ -49,19 +49,24 @@ document.querySelectorAll("th.sortable").forEach((th) => {
 });
 
 // Paginated tables: <table class="paged" data-page-size="8"> followed by <div class="pager">
+// Rows with data-out="1" are filtered out (table.repage() recomputes the pages after filtering).
 document.querySelectorAll("table.paged").forEach((table) => {
   const size = parseInt(table.dataset.pageSize || "10", 10);
-  const rows = [...table.tBodies[0].rows];
   const pager = table.nextElementSibling;
-  if (!pager || !pager.classList.contains("pager") || rows.length <= size) return;
-  const pages = Math.ceil(rows.length / size);
-  const show = (page) => {
-    rows.forEach((r, i) => { r.hidden = Math.floor(i / size) !== page; });
-    pager.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === page));
-  };
-  pager.innerHTML = Array.from({ length: pages }, (_, i) => `<button type="button">${i + 1}</button>`).join("");
-  pager.querySelectorAll("button").forEach((b, i) => { b.onclick = () => show(i); });
-  show(0);
+  if (!pager || !pager.classList.contains("pager")) return;
+  (table.repage = () => {
+    const all = [...table.tBodies[0].rows];
+    const rows = all.filter((r) => r.dataset.out !== "1");
+    all.forEach((r) => { if (r.dataset.out === "1") r.hidden = true; });
+    const pages = Math.ceil(rows.length / size);
+    const show = (page) => {
+      rows.forEach((r, i) => { r.hidden = Math.floor(i / size) !== page; });
+      pager.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === page));
+    };
+    pager.innerHTML = pages > 1 ? Array.from({ length: pages }, (_, i) => `<button type="button">${i + 1}</button>`).join("") : "";
+    pager.querySelectorAll("button").forEach((b, i) => { b.onclick = () => show(i); });
+    show(0);
+  })();
 });
 
 // "Select all" checkboxes

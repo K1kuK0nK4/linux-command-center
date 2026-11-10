@@ -110,6 +110,25 @@
   </form>
 </div>
 
+<div class="card" id="online">
+  <h2>Online data (end of life)</h2>
+  <p class="small muted" style="margin-top:0">Support dates of operating systems and applications come from
+    <b>endoflife.date</b>. Its public catalog is downloaded in a single request, the same for everyone:
+    nothing about your inventory leaves this computer. Applications are detected automatically from the
+    scanned packages. Without Internet the last download is used.</p>
+  <p class="small">Last update: <b>{{ online.last or 'never' }}</b>{% if online.attempt and online.attempt != online.last %}
+    · last attempt {{ online.attempt }}{% endif %}</p>
+  {% if online.errors %}<div class="alert warn small">Could not download: {% for p, e in online.errors.items() %}<code>{{ p }}</code> ({{ e }}){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
+  <form method="post" action="/settings/online/refresh" style="margin-bottom:14px"><button class="primary" type="submit">Update now</button></form>
+  <form method="post" action="/settings/online" class="form" style="max-width:none" autocomplete="off">
+    <label class="inline"><input type="checkbox" name="online_updates" value="1" {{ 'checked' if online.enabled }}>
+      Update automatically once a day</label>
+    <label>Proxy <span class="muted">(optional)</span></label>
+    <input name="http_proxy" value="{{ online.proxy }}" placeholder="http://proxy.example.com:8080" style="max-width:420px">
+    <p><button type="submit">Save</button></p>
+  </form>
+</div>
+
 <div class="grid">
   <div class="card form" id="safe-mode">
     <h2>Safe mode</h2>

@@ -199,6 +199,15 @@ CREATE TABLE IF NOT EXISTS audit (
     action TEXT,
     detail TEXT
 );
+
+-- Public data downloaded from the Internet (end-of-life dates, ...): one JSON document per source
+CREATE TABLE IF NOT EXISTS online_data (
+    source TEXT NOT NULL,
+    key TEXT NOT NULL,
+    data TEXT,
+    fetched_at TEXT,
+    PRIMARY KEY (source, key)
+);
 """
 
 _conn = None
@@ -228,7 +237,7 @@ def _migrate(c):
     # Credential owned by a single server (does not appear in the shared credentials list)
     _add_columns(c, "credentials", [("owner_vm_id", "INTEGER")])
     # packages.container: NULL = host package; otherwise, the name of the container it is in
-    _add_columns(c, "packages", [("container", "TEXT")])
+    _add_columns(c, "packages", [("container", "TEXT"), ("vendor", "TEXT")])
     _add_columns(c, "package_changes", [("container", "TEXT")])
     _add_columns(c, "vms", [("container_count", "INTEGER"), ("containers_error", "TEXT"),
                             ("pending_host_key", "TEXT"), ("jump_vm_id", "INTEGER")])

@@ -25,6 +25,7 @@
   <a class="kpi warn" href="/vms?reboot=1"><div class="n">{{ stats.reboot or 0 }}</div><div class="l">Reboot required</div></a>
   <a class="kpi bad" href="/vms?sec=1-5&sec=6-20&sec=20%2B"><div class="n">{{ stats.sec or 0 }}</div><div class="l">With pending security updates</div></a>
   <a class="kpi warn" href="/vms?upd_age=90&upd_age=365&upd_age=old"><div class="n">{{ stats.stale_upd or 0 }}</div><div class="l">Not updated in 30+ days</div></a>
+  <a class="kpi bad" href="/vms?eol=eol"><div class="n">{{ eol_count }}</div><div class="l">OS without security support{% if eol_soon %} <span class="muted">(+{{ eol_soon }} soon)</span>{% endif %}</div></a>
 </div>
 {% endif %}
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from functools import cmp_to_key
 from urllib.parse import parse_qs, urlencode
 
-from . import db, versions
+from . import db, eol, versions
 
 DIMENSIONS = {
     "os": "Operating system + version",
@@ -23,6 +23,7 @@ DIMENSIONS = {
     "oldest_version": "Oldest version of a package (server ranking)",
     "tag_key": "Tag with key (e.g. Vendor:…)",
     "containers": "Docker / Podman",
+    "support": "OS support (end of life)",
 }
 KINDS = {"pie": "Pie", "doughnut": "Donut", "bar": "Bars"}
 FILTERS = ("client", "environment", "tag", "os_family", "os_name")
@@ -49,10 +50,11 @@ def _vms(filters):
         if vals:
             where.append(f"COALESCE({f},'') IN ({','.join('?' * len(vals))})")
             args += ["" if v == NONE_VALUE else v for v in vals]
-    tags = [int(t) for t in as_list(filters.get("tag")) if t.isdigit()]
-    if tags:
-        where.append(f"id IN (SELECT vm_id FROM vm_tags WHERE tag_id IN ({','.join('?' * len(tags))}))")
-        args += tags
+    tags = sorted({int(t) for t in as_list(filters.get("tag")) if t.isdigit()})
+    if tags:   # several tags: the server must have all of them (same rule as the inventory)
+        where.append(f"id IN (SELECT vm_id FROM vm_tags WHERE tag_id IN ({','.join('?' * len(tags))}) "
+                     "GROUP BY vm_id HAVING COUNT(DISTINCT tag_id)=?)")
+        args += [*tags, len(tags)]
     sql = "SELECT * FROM vms" + (" WHERE " + " AND ".join(where) if where else "")
     return db.q(sql, args)
 
@@ -170,12 +172,17 @@ def compute(chart, filters):
                     add("No Docker or Podman", _link({**base, "containers": "no"}))
                 else:
                     add("With Docker/Podman", _link({**base, "containers": "yes"}))
+            elif dim == "support":
+                state = eol.os_status(v)["state"]
+                add(SUPPORT[state], _link({**base, "eol": state}))
     return [(label, n, links.get(label)) for label, n in counts.most_common()], len(vms)
 
 
+SUPPORT = {"ok": "Supported", "soon": "Support ends within 90 days", "eol": "End of life", "unknown": "(unknown)"}
 ORDERED = {
     "update_age": ["< 7 days", "7-30 days", "30-90 days", "90-365 days", "> 1 year", "(unknown)", NONE],
     "security": ["0", "1-5", "6-20", "> 20", "(unknown)", NONE],
+    "support": [SUPPORT[k] for k in ("ok", "soon", "eol", "unknown")] + [NONE],
 }
 
 

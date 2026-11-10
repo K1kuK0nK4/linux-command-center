@@ -11,7 +11,7 @@ import json
 import re
 import shlex
 
-from . import db, versions
+from . import db, eol, versions
 from .ssh import SSHError, connect, sudo_password
 
 MARK = "@@@VMINV@@@ "
@@ -39,9 +39,11 @@ if has dpkg-query; then
   { cat /var/log/apt/history.log 2>/dev/null; zcat /var/log/apt/history.log.*.gz 2>/dev/null; } \
     | awk '/^Start-Date:/{d=$2" "$3} /^Upgrade:/{print d" U"} /^Install:/{print d" I"}' | sort -r | head -n 20
   sec DPKGMTIME; stat -c %Y /var/lib/dpkg/status 2>/dev/null
+  sec DPKGVENDOR; dpkg-query -W -f='${Package}|${Maintainer}\n' </dev/null 2>/dev/null
   sec APTUPG; has apt && apt list --upgradable </dev/null 2>/dev/null
 elif has rpm; then
   sec RPM; rpm -qa --qf '%{NAME}|%{EPOCH}|%{VERSION}|%{RELEASE}|%{ARCH}|%{INSTALLTIME}\n' </dev/null 2>/dev/null
+  sec RPMVENDOR; rpm -qa --qf '%{NAME}|%{VENDOR}\n' </dev/null 2>/dev/null
   if has dnf; then PM=dnf; else PM=yum; fi
   sec RPMUPG; timeout 60 $PM -q -C check-update </dev/null 2>/dev/null; echo "EXIT=$?"
   sec RPMSEC
@@ -301,6 +303,13 @@ def parse(out, probes=()):
     else:
         info["os_family"] = ""
 
+    # Who built each host package (rpm Vendor / dpkg Maintainer): tells distribution packages from third-party ones
+    info["vendors"] = {}
+    for line in s.get("DPKGVENDOR", []) + s.get("RPMVENDOR", []):
+        name, sep, vendor = line.partition("|")
+        if sep and name.strip():
+            info["vendors"][name.strip()] = vendor.strip() if vendor.strip() not in ("", "(none)") else "(none)"
+
     for line in s.get("SNAP", [])[1:]:
         parts = line.split()
         if len(parts) >= 2:
@@ -384,8 +393,10 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
     count = sum(1 for p in packages if p[3] not in ("kernel", "probe"))
     with db.tx() as c:
         c.execute("DELETE FROM packages WHERE vm_id=?", (vm_id,))
-        c.executemany("INSERT INTO packages(vm_id, name, version, arch, source, container) VALUES(?,?,?,?,?,?)",
-                      [(vm_id, *r) for r in rows])
+        vendors = info.get("vendors") or {}
+        c.executemany("INSERT INTO packages(vm_id, name, version, arch, source, container, vendor) VALUES(?,?,?,?,?,?,?)",
+                      [(vm_id, *r, vendors.get(r[0]) if r[4] is None and r[3] in ("rpm", "deb") else None)
+                       for r in rows])
         c.execute("DELETE FROM containers WHERE vm_id=?", (vm_id,))
         c.executemany("""INSERT INTO containers(vm_id, runtime, cid, name, image, state, status, ports, os_name,
                          os_version, os_family, pkg_count, error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -416,7 +427,7 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
                              sum(1 for ch in changes if ch[3] == "updated"))).lastrowid
         c.executemany("INSERT INTO package_changes(scan_id, vm_id, name, old_version, new_version, change, container) "
                       "VALUES(?,?,?,?,?,?,?)", [(scan_id, vm_id, *ch) for ch in changes])
-    db.bump()
+    eol.sync_tags([vm_id])   # the OS or the applications may have changed (also bumps)
 
 
 def save_error(vm_id, started_at, error):

@@ -38,6 +38,10 @@ on the servers: it connects over SSH, reads, and disconnects.
   inside (Alpine, Debian, UBI…), so a vulnerable OpenSSL inside an image does not go unnoticed.
 - **Version detection beyond packages.** Configurable probes (`nginx -v`, `java -version`, `openssl version`…)
   catch software installed by hand, in `/opt` or from tarballs.
+- **End-of-life detection.** Operating systems and applications without security support are flagged using
+  the public endoflife.date data. Applications are detected from the scanned packages, and the app tells apart
+  what the distribution keeps patching from third-party packages (Docker, MySQL Community, NodeSource, EPEL…).
+  Servers get the `EOL:SO` and `EOL:App` tags automatically, so they are easy to filter.
 - **Change tracking.** Every scan records what was installed, updated or removed since the previous one.
 - **Remote execution at scale.** Run a command on many servers in parallel (with or without `sudo`), see the
   result per server, filter and export. Keep a personal library of reusable commands with `{{variables}}`.
@@ -54,7 +58,7 @@ This tool holds credentials to other people's servers, so it is built defensivel
 
 | | |
 |---|---|
-| **Runs on your machine only** | The web UI is bound to `127.0.0.1`. No cloud, no telemetry, nothing "phones home". |
+| **Runs on your machine only** | The web UI is bound to `127.0.0.1`. No cloud, no telemetry. The only request to the Internet is a daily download of the public endoflife.date catalog: the same file for everyone, with nothing from your inventory in it. It can be turned off or sent through a proxy. |
 | **Nothing installed on servers** | Scans are read-only commands over SSH. The exact script is shown in the app (*Inventory → What does it do?*). |
 | **Credentials are not stored by default** | The app asks for them when it connects and, only if you tick *Remember*, keeps them in memory until you lock it. SSH keys are supported. Saving them is an explicit choice per server: if you do, they are encrypted with AES-256-GCM (key derived from your master password with scrypt), never leave your machine and can only be revealed after re-entering the master password. |
 | **Step-up authentication** | Opening a terminal, running remote commands, changing files over SSH or revealing a password asks for the master password again (valid for 5 minutes). |
@@ -138,7 +142,7 @@ docker compose up -d --build
 ## What it runs on your servers
 
 The scan only uses read-only commands, without `sudo`: `cat /etc/os-release`, `uname`, `dpkg-query -W` / `rpm -qa`
-/ `apk info`, `apt list --upgradable` / `dnf -C check-update` (local cache only, nothing is downloaded), `ss -tuln`,
+/ `apk info` (name, version and who built each package), `apt list --upgradable` / `dnf -C check-update` (local cache only, nothing is downloaded), `ss -tuln`,
 `systemctl list-units`, the version probes you enable, and `docker`/`podman ps` plus a read-only `exec` for
 containers (with `sudo` only if Docker requires it, and recorded in the audit log).
 
@@ -150,7 +154,8 @@ every system you add.
 - [ ] **CVE search.** Type a CVE ID and get the fixed version per distribution (Red Hat Security Data, Ubuntu CVE
       Tracker, OSV.dev) and the list of affected servers, with no static data inside the app.
 - [ ] **Actively exploited flag.** Highlight vulnerabilities listed in the CISA KEV catalog.
-- [ ] **End-of-life detection.** Warn about operating systems without security support (endoflife.date).
+- [x] **End-of-life detection.** Operating systems and applications without security support (endoflife.date),
+      with automatic tags.
 - [ ] **AI-assisted triage.** Summarise an advisory and suggest the searches and remediation commands.
 - [ ] **Hardening checks.** A read-only baseline (SSH configuration, sudoers, SELinux/AppArmor, firewall, time
       sync…) with a score per server.
