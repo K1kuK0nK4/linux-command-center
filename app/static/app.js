@@ -70,6 +70,45 @@ document.querySelectorAll("table.paged").forEach((table) => {
   })();
 });
 
+// Filter forms that apply by themselves (<form data-auto>, no Filter button needed):
+// - multi-select dropdowns: when the dropdown closes (so several options can be ticked in a row);
+// - plain checkboxes, radio buttons and selects: right away;
+// - text boxes with data-live: after a short pause while typing (the others, with Enter).
+// data-auto="search" waits until there is a package to search for.
+document.querySelectorAll("form[data-auto]").forEach((form) => {
+  const go = () => {
+    if (form.dataset.auto === "search" && !(form.elements.pkg?.value || "").trim()) return;
+    form.requestSubmit ? form.requestSubmit() : form.submit();
+  };
+  form.addEventListener("change", (e) => {
+    const multi = e.target.closest("details.multi");
+    if (multi) { multi.dataset.dirty = "1"; return; }
+    if (e.target.matches("input[type=checkbox], input[type=radio], select")) go();
+  });
+  form.querySelectorAll("details.multi").forEach((d) => d.addEventListener("toggle", () => {
+    if (!d.open && d.dataset.dirty) { delete d.dataset.dirty; go(); }
+  }));
+  form.querySelectorAll("input[data-live]").forEach((inp) => {
+    let timer;
+    inp.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        try { sessionStorage.setItem("lcc-live-focus", inp.name); } catch (e) { /* storage blocked */ }
+        go();
+      }, 600);
+    });
+  });
+});
+// After a live search the page reloads: put the cursor back at the end of the text box
+try {
+  const name = sessionStorage.getItem("lcc-live-focus");
+  if (name) {
+    sessionStorage.removeItem("lcc-live-focus");
+    const inp = document.querySelector(`form[data-auto] input[data-live][name="${CSS.escape(name)}"]`);
+    if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  }
+} catch (e) { /* storage blocked */ }
+
 // "Select all" checkboxes
 document.querySelectorAll("input[data-check-all]").forEach((all) => {
   all.addEventListener("change", () => {

@@ -123,6 +123,9 @@
   <form method="post" action="/settings/online" class="form" style="max-width:none" autocomplete="off">
     <label class="inline"><input type="checkbox" name="online_updates" value="1" {{ 'checked' if online.enabled }}>
       Update automatically once a day</label>
+    <label>At login, update if the data is older than <span class="muted">(hours)</span></label>
+    <input name="online_min_hours" type="number" min="1" max="168" value="{{ online.min_hours }}" style="max-width:120px">
+    <div class="hint">Runs in the background, so logging in does not wait. Only while automatic updates are on.</div>
     <label>Proxy <span class="muted">(optional)</span></label>
     <input name="http_proxy" value="{{ online.proxy }}" placeholder="http://proxy.example.com:8080" style="max-width:420px">
     <p><button type="submit">Save</button></p>

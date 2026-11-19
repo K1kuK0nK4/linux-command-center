@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Search packages / affected servers</h1>
 <div class="card">
-<form method="get" autocomplete="off">
+<form method="get" autocomplete="off" data-auto="search">
   <div class="search-form">
     <div><label for="pkg">Package</label>
       <input name="pkg" id="pkg" list="pkg-suggest" value="{{ p.pkg or '' }}" placeholder="openssl, openssh-server, kernel-running..." required>

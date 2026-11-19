@@ -1100,3 +1100,15 @@ ES.update({
     "Origin": "Origen",
     "endoflife.date does not track this package: it follows the operating system": "endoflife.date no sigue este paquete: va con el soporte del sistema operativo"
 })
+
+# Status filter
+ES.update({
+    "Never scanned successfully": "Nunca escaneado con éxito"
+})
+
+# Online data at login
+ES.update({
+    "At login, update if the data is older than": "Al iniciar sesión, actualizar si los datos tienen más de",
+    "(hours)": "(horas)",
+    "Runs in the background, so logging in does not wait. Only while automatic updates are on.": "Se hace en segundo plano, así que el inicio de sesión no espera. Solo con la actualización automática activada."
+})

@@ -28,7 +28,10 @@
   <thead><tr><th>Date</th><th>Action</th><th>Details</th><th title="Signed with the audit key">Signed</th></tr></thead>
   <tbody>{% for r in rows %}<tr><td class="small" style="white-space:nowrap">{{ r.ts }}</td>
     <td><span class="badge {{ 'b-bad' if r.action in ('login_fallido', 'credencial_revelada', 'hostkey_reset', 'verificacion_fallida', 'comando_peligroso_confirmado', 'terminal_peligroso_confirmado') else 'b-warn' if 'comando' in r.action or 'terminal_abierta' == r.action else 'b-muted' }}" title="{{ r.action }}">{{ r.action|action_label }}</span></td>
-    <td class="mono small">{{ r.detail }}</td>
+    {% set detail = (r.detail or '').replace('\x1b[200~', '').replace('\x1b[201~', '') %}
+    <td class="mono small">{% if detail|length > 300 %}{{ detail[:300].replace('\r', ' ') }}…
+      <details><summary>Show all</summary><pre class="out" style="white-space:pre-wrap">{{ detail.replace('\r', '\n') }}</pre></details>
+      {% else %}{{ detail.replace('\r', ' ') }}{% endif %}</td>
     <td class="small">{{ 'Yes' if r.keyed else '' }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% endblock %}

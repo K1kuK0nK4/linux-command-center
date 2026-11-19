@@ -20,7 +20,7 @@
   <a class="kpi" href="/vms"><div class="n">{{ total }}</div><div class="l">Servers in inventory</div></a>
   <a class="kpi ok" href="/vms?status=ok"><div class="n">{{ stats.ok or 0 }}</div><div class="l">Last successful scan</div></a>
   <a class="kpi bad" href="/vms?status=error"><div class="n">{{ stats.err or 0 }}</div><div class="l">Scan failed</div></a>
-  <a class="kpi" href="/vms?status=never"><div class="n">{{ stats.never or 0 }}</div><div class="l">Never scanned</div></a>
+  <a class="kpi" href="/vms?status=never"><div class="n">{{ stats.never or 0 }}</div><div class="l">Never scanned successfully</div></a>
   <a class="kpi warn" href="/vms?stale_scan=1"><div class="n">{{ stats.stale_scan or 0 }}</div><div class="l">No successful scan in 7+ days</div></a>
   <a class="kpi warn" href="/vms?reboot=1"><div class="n">{{ stats.reboot or 0 }}</div><div class="l">Reboot required</div></a>
   <a class="kpi bad" href="/vms?sec=1-5&sec=6-20&sec=20%2B"><div class="n">{{ stats.sec or 0 }}</div><div class="l">With pending security updates</div></a>

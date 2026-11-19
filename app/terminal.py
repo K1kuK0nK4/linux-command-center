@@ -102,7 +102,8 @@ async def session(ws: WebSocket, vm_id: int, become: str | None, first_msg=None)
                     elif msg.get("t") == "r":
                         proc.change_terminal_size(int(msg["c"]), int(msg["r"]))
                     elif msg.get("t") == "danger":
-                        db.audit("terminal_peligroso_confirmado", f"{vm['name']}: {msg.get('line', '')[:300]}")
+                        # The whole confirmed text (a pasted block can hold many commands), up to 8 KB
+                        db.audit("terminal_peligroso_confirmado", f"{vm['name']}: {msg.get('line', '')[:8000]}")
 
             tasks = [asyncio.create_task(ssh_to_ws()), asyncio.create_task(ws_to_ssh())]
             try:

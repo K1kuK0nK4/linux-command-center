@@ -121,11 +121,11 @@
     <button type="submit">{{ _('Confirm') }}</button> <button type="button" id="mp-cancel" class="sec">{{ _('Cancel') }}</button>
   </form>
 </dialog>
+<script src="{{ js_i18n_src() }}"></script>
 <script src="/static/danger.js"></script>
 <script src="/static/lib/xterm.js"></script>
 <script src="/static/lib/addon-fit.js"></script>
 <script>
-  window.I18N = {{ js_i18n()|tojson }};
   const t = (s, vars) => { let r = (window.I18N || {})[s] ?? s; for (const [k, v] of Object.entries(vars || {})) r = r.split(`{${k}}`).join(v); return r; };
   const SAFE = {{ 'true' if safe else 'false' }};
   const RULES = {{ safe_rules|tojson }}.map((r) => ({ re: new RegExp(r.re, "i"), desc: r.desc }));

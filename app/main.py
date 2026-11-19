@@ -125,7 +125,7 @@ templates.env.globals["AUTHOR_NAME"] = "@fmunozcano"
 templates.env.globals["AUTHOR_URL"] = "https://www.linkedin.com/in/fmunozcano/"
 templates.env.globals["_"] = i18n._
 templates.env.globals["get_lang"] = i18n.get_lang
-templates.env.globals["js_i18n"] = i18n.js_dict
+templates.env.globals["js_i18n_src"] = i18n.js_src   # URL of the cached dictionary for the browser
 templates.env.globals["auth_need"] = lambda vm: ssh.needs(vm)
 # Changing this number forces users to accept the legal notice again
 DISCLAIMER_VERSION = "1"
@@ -363,7 +363,9 @@ async def guard(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
-    response.headers["Cache-Control"] = "no-store"
+    # Nothing is cached (pages hold inventory data), except the public, versioned translation dictionary
+    if not (path.startswith("/lang/") and path.endswith(".js")):
+        response.headers["Cache-Control"] = "no-store"
     # CSP: even if a script got in (e.g. through malicious data from a server), it could not send anything out
     # or load external resources. The pages use inline scripts, which is why 'unsafe-inline' is allowed.
     response.headers["Content-Security-Policy"] = (
@@ -380,6 +382,15 @@ def new_session(response):
     sessions[token] = time.time() + SESSION_IDLE
     response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="strict")
     return response
+
+
+@app.get("/lang/{lang}.js")
+async def lang_js(lang: str):
+    """Translation dictionary for the browser; the ?v= version changes with the texts, so it can be cached."""
+    if lang not in i18n.LANGS:
+        return Response(status_code=404)
+    return Response(i18n.js_source(lang), media_type="text/javascript; charset=utf-8",
+                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.post("/lang")
@@ -482,6 +493,11 @@ async def login(request: Request):
         return render(request, "login.html", error="Wrong password.")
     db.audit("login", "")
     await upgrade_kdf(form.get("password", ""))
+    # End-of-life data: refreshed in the background at login if it is older than the configured hours
+    if online_due(online_min_hours() * 3600):
+        task = asyncio.create_task(_refresh_in_background())
+        _background.add(task)
+        task.add_done_callback(_background.discard)
     return new_session(redirect("/"))
 
 
@@ -499,7 +515,7 @@ async def logout(request: Request):
 async def dashboard(request: Request):
     total = db.q1("SELECT COUNT(*) n FROM vms")["n"]
     stats = db.q1("""SELECT
-        SUM(last_scan_status='ok') ok, SUM(last_scan_status='error') err, SUM(last_scan_status='never') never,
+        SUM(last_scan_status='ok') ok, SUM(last_scan_status='error') err, SUM(last_ok_at IS NULL) never,
         SUM(reboot_required=1) reboot, SUM(pending_security>0) sec,
         SUM(last_pkg_update IS NOT NULL AND last_pkg_update < datetime('now','localtime','-30 days')) stale_upd,
         SUM(last_ok_at IS NULL OR last_ok_at < datetime('now','localtime','-7 days')) stale_scan
@@ -609,10 +625,12 @@ def vm_filters(params):
         if params.get(field):
             where.append(f"COALESCE(vms.{field},'')=?")
             args.append("" if params[field] == NONE_VALUE else params[field])
-    statuses = [s for s in as_list(params.get("status")) if s in ("ok", "error", "never")]
-    if statuses:
-        where.append(in_clause("vms.last_scan_status", statuses))
-        args += statuses
+    # "never" = never scanned successfully (not attempted yet, or every attempt failed, e.g. wrong credentials)
+    status_sql = {"ok": "vms.last_scan_status='ok'", "error": "vms.last_scan_status='error'",
+                  "never": "vms.last_ok_at IS NULL"}
+    conds = [status_sql[s] for s in as_list(params.get("status")) if s in status_sql]
+    if conds:
+        where.append("(" + " OR ".join(conds) + ")")
     for key, ranges in (("upd_age", UPD_AGE), ("sec", SEC)):
         conds = [ranges[v] for v in as_list(params.get(key)) if v in ranges]
         if conds:
@@ -1459,7 +1477,7 @@ async def commands(request: Request):
                "FROM vms ORDER BY client, name")
     recent = db.q("""SELECT j.*, SUM(r.status='ok') ok, SUM(r.status='failed') fail, SUM(r.status='error') err,
                      SUM(r.status IN ('pending','running')) pend FROM jobs j
-                     LEFT JOIN job_results r ON r.job_id=j.id GROUP BY j.id ORDER BY j.id DESC LIMIT 30""")
+                     LEFT JOIN job_results r ON r.job_id=j.id GROUP BY j.id ORDER BY j.id DESC LIMIT 100""")   # paginated, 10 per page
     preselect = {int(i) for i in p.get("ids", "").split(",") if i.isdigit()}
     seed_saved_commands()
     saved = [dict(r) for r in db.q("SELECT * FROM saved_commands ORDER BY name COLLATE NOCASE")]
@@ -1797,6 +1815,7 @@ def settings_view(request, error=None):
                   probes=db.q("SELECT * FROM probes ORDER BY name"),
                   hostkey_policy=db.get_setting("hostkey_policy", "confirm"),
                   online={"enabled": eol.enabled(), "proxy": db.get_setting("http_proxy", ""),
+                          "min_hours": online_min_hours(),
                           "last": eol.last_update(),
                           "attempt": db.get_setting("online_last_attempt", None),
                           "errors": json.loads(db.get_setting("online_errors", "{}") or "{}")},
@@ -1867,6 +1886,9 @@ async def settings_online(request: Request):
         return settings_view(request, error="The proxy must look like http://proxy.example.com:8080")
     db.set_setting("online_updates", "1" if form.get("online_updates") else "0")
     db.set_setting("http_proxy", proxy)
+    hours = str(form.get("online_min_hours", "")).strip()
+    if hours.isdigit() and 1 <= int(hours) <= 168:
+        db.set_setting("online_min_hours", hours)
     db.audit("ajustes", "Online data settings changed")
     return flash("/settings", "saved", "#online")
 
@@ -2226,14 +2248,42 @@ def maybe_auto_lock():
     return False
 
 
+_online_lock = asyncio.Lock()
+ONLINE_MIN_HOURS = 12   # default: at login, refresh only if the last attempt is older than this
+
+
 async def refresh_online_data():
-    """Downloads the public end-of-life data (only product release cycles; nothing from the inventory)."""
-    data, index, errors = await asyncio.to_thread(eol.download, db.get_setting("http_proxy", ""))
-    eol.store(data, index)
-    eol.sync_tags()
-    db.set_setting("online_last_attempt", db.now())
-    db.set_setting("online_errors", json.dumps(errors))
-    return data, errors
+    """Downloads the public end-of-life data (only product release cycles; nothing from the inventory).
+    Only one download at a time: a second call waits for the first one and reuses its result."""
+    async with _online_lock:
+        data, index, errors = await asyncio.to_thread(eol.download, db.get_setting("http_proxy", ""))
+        eol.store(data, index)
+        eol.sync_tags()
+        db.set_setting("online_last_attempt", db.now())
+        db.set_setting("online_errors", json.dumps(errors))
+        return data, errors
+
+
+def online_min_hours():
+    try:
+        return max(1, min(168, int(db.get_setting("online_min_hours", ONLINE_MIN_HOURS))))
+    except (TypeError, ValueError):
+        return ONLINE_MIN_HOURS
+
+
+def online_due(max_age_s):
+    """Automatic refresh allowed (switch on) and the last attempt is older than max_age_s (or never)."""
+    if not (vault.initialized and eol.enabled()) or _online_lock.locked():
+        return False
+    age = online_attempt_age()
+    return age is None or age > max_age_s
+
+
+async def _refresh_in_background():
+    try:
+        await refresh_online_data()
+    except Exception:
+        pass   # offline or proxy problem: the error is shown in Settings on the next attempt
 
 
 def online_attempt_age():
@@ -2256,8 +2306,7 @@ async def maintenance_loop():
                 n = apply_retention()
                 if n:
                     db.audit("limpieza_historial", f"{n} old records deleted")
-            age = online_attempt_age()
-            if vault.initialized and eol.enabled() and (age is None or age > 86400):
+            if online_due(86400):
                 await refresh_online_data()
         except Exception:
             pass

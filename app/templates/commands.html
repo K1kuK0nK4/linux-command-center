@@ -75,7 +75,7 @@
 
 <div class="card">
   <h2>Recent runs</h2>
-  <table>
+  <table class="paged" data-page-size="10">
     <thead><tr><th>#</th><th>Date</th><th>Command</th><th>Servers</th><th>Result</th></tr></thead>
     <tbody>{% for j in recent %}<tr>
       <td><a href="/jobs/{{ j.id }}">{{ j.id }}</a></td><td class="small">{{ j.created_at }}</td>
@@ -87,6 +87,7 @@
         {% if j.pend %}<span class="badge b-muted">{{ j.pend }} running</span>{% endif %}</td>
     </tr>{% else %}<tr><td colspan="5" class="muted">You haven't run any commands yet.</td></tr>{% endfor %}</tbody>
   </table>
+  <div class="pager"></div>
 </div>
 {% endblock %}
 {% block scripts %}

@@ -11,17 +11,16 @@
 
 {% if pending_hostkeys %}<div class="alert warn">{{ pending_hostkeys }} servers with an SSH fingerprint pending confirmation.
   <a href="/hostkeys">Review and accept →</a></div>{% endif %}
-<form class="filters" method="get">
-  <input name="q" value="{{ p.q or '' }}" placeholder="Search name, IP, OS, kernel, tag...">
+<form class="filters" method="get" data-auto>
+  <input name="q" value="{{ p.q or '' }}" placeholder="Search name, IP, OS, kernel, tag..." data-live>
   {% from "_multi.html" import multi %}
   {{ multi("client", "All organizations", [("__none__", "(no organization)")] + zip_pairs(clients), p.client) }}
   {{ multi("environment", "All environments", [("__none__", "(no environment)")] + zip_pairs(envs), p.environment) }}
   {{ multi("tag", "All tags", tag_options(tags), p.tag) }}
   {{ multi("os_name", "All distributions", distro_options(), p.os_name) }}
-  {{ multi("status", "Any status", [("ok", "Scan OK"), ("error", "Scan failed"), ("never", "Never scanned")], p.status) }}
+  {{ multi("status", "Any status", [("ok", "Scan OK"), ("error", "Scan failed"), ("never", "Never scanned successfully")], p.status) }}
   {{ multi("containers", "With and without containers", [("yes", "With Docker/Podman"), ("no", "Without Docker/Podman")], p.containers) }}
   <label class="inline"><input type="checkbox" name="reboot" value="1" {{ 'checked' if p.reboot }}> Reboot required</label>
-  <button type="submit">Filter</button>
   {% if request.url.query %}<a href="/vms">Clear filters</a>{% endif %}
 </form>
 
