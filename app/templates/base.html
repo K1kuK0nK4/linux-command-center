@@ -18,6 +18,7 @@
     <a href="/" class="{{ 'active' if path == '/' }}">{{ icon("layout-dashboard") }}<span>Dashboard</span></a>
     <a href="/vms" class="{{ 'active' if path.startswith('/vms') }}">{{ icon("server") }}<span>Inventory</span></a>
     <a href="/search" class="{{ 'active' if path.startswith('/search') }}">{{ icon("package-search") }}<span>Search packages</span></a>
+    <a href="/cve" class="{{ 'active' if path.startswith('/cve') }}">{{ icon("shield-alert") }}<span>CVE lookup</span></a>
     <a href="/commands" class="{{ 'active' if path.startswith('/commands') or path.startswith('/jobs') }}">{{ icon("square-terminal") }}<span>Remote execution</span></a>
     <a href="/tags" class="{{ 'active' if path.startswith('/tags') }}">{{ icon("tags") }}<span>Organizations and tags</span></a>
     <a href="/credentials" class="{{ 'active' if path.startswith('/credentials') }}">{{ icon("key-round") }}<span>Credentials</span></a>

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>CVE lookup</h1>
+<div class="card">
+<form method="get" autocomplete="off" class="filters" style="margin:0">
+  <input name="id" value="{{ cve_id or p.id or '' }}" placeholder="CVE-2024-6387" class="mono" style="width:220px" required autofocus>
+  <button class="primary" type="submit">Look up</button>
+  {% if cve_id %}<a class="btn" href="/cve?id={{ cve_id }}&refresh=1" title="Ask the sources again instead of using the copy of the last hours">Check sources again</a>{% endif %}
+</form>
+<p class="hint" style="margin-bottom:0">Only the CVE ID is sent to the vendors' public sources (Red Hat, Ubuntu, and OSV for Debian and Alpine).
+  The result compares <b>versions</b>: conditions such as "only if a module is enabled" are not checked, read the vendor notes below.</p>
+</div>
+{% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+
+{% if results is not none %}
+<div class="card">
+  <h2 style="margin-top:0">{{ cve_id }}
+    {% if info.severity %}<span class="badge b-warn">{{ info.severity }}</span>{% endif %}
+    {% if info.cvss %}<span class="badge b-muted">CVSS {{ info.cvss }}</span>{% endif %}
+    {% if kev %}<span class="badge b-bad" title="CISA Known Exploited Vulnerabilities">Actively exploited (CISA KEV)</span>{% endif %}</h2>
+  {% if info.description %}<p class="small" style="white-space:pre-wrap">{{ info.description|truncate(900) }}</p>{% endif %}
+  {% if kev %}<div class="alert bad small">In the CISA KEV catalog since <b>{{ kev.dateAdded }}</b>{% if kev.knownRansomwareCampaignUse == 'Known' %} · <b>used in ransomware campaigns</b>{% endif %}.
+    {% if kev.requiredAction %}<div style="margin-top:4px">{{ kev.requiredAction }}</div>{% endif %}</div>
+  {% elif not kev_loaded[0] %}<p class="muted small">The CISA KEV catalog could not be downloaded: the "actively exploited" flag is not available.</p>{% endif %}
+  <p class="small" style="margin-bottom:0">Sources:
+    {% for name, status, err in sources %}<span class="badge {{ 'b-ok' if status == 'found' else 'b-bad' if status == 'error' else 'b-muted' }}"
+      title="{{ err or ('Has data for this CVE' if status == 'found' else 'No record for this CVE') }}">{{ name }}: {{ 'data' if status == 'found' else 'error' if status == 'error' else 'no record' }}</span> {% endfor %}
+    {% if fetched_at %}<span class="muted">· checked {{ fetched_at }}</span>{% endif %}</p>
+</div>
+
+{% if vendor %}
+<details class="card" open>
+  <summary><b>Software vendor data</b> <span class="muted small">· affected versions of the product itself (applies to third-party packages and software installed by hand, not to distribution packages)</span></summary>
+  <table style="margin-top:10px">
+    <thead><tr><th>Source</th><th>Vendor</th><th>Product</th><th>Affected versions</th></tr></thead>
+    <tbody>{% for v in vendor %}<tr><td class="small">{{ v.via }}</td><td>{{ v.vendor }}</td><td><b>{{ v.product }}</b></td>
+      <td class="mono small">{{ v.ranges|join(' · ') }}</td></tr>{% endfor %}</tbody>
+  </table>
+</details>
+{% endif %}
+
+{% if info.notes %}
+<details class="card" open>
+  <summary><b>Vendor notes and mitigation</b> <span class="muted small">· conditions to check by hand</span></summary>
+  {% for vendor, kind, text in info.notes %}
+  <div style="margin-top:10px"><span class="badge b-muted">{{ vendor }} · {{ kind }}</span>
+    <pre class="out" style="white-space:pre-wrap">{{ text }}</pre></div>
+  {% endfor %}
+</details>
+{% endif %}
+
+{% for name, n in unevaluated %}<div class="alert bad small"><b>{{ name }} did not answer:</b> {{ n }} servers or containers of that
+  distribution could not be evaluated and are not in the result. Use "Check sources again" in a while.</div>{% endfor %}
+{% if missing_sources %}<div class="alert warn small">{{ missing_sources }} servers were scanned before the source package of each package was recorded:
+  their results may be incomplete (e.g. <code>apache2-bin</code> is not linked to <code>apache2</code>). Scan them again.</div>{% endif %}
+
+<div class="kpis">
+  {% for s in ['vulnerable', 'vulnerable_nofix', 'wontfix', 'upstream_vulnerable', 'third_party', 'upstream_patched', 'patched', 'not_affected', 'no_data'] %}
+  {% if counts[s] or s in ('vulnerable', 'vulnerable_nofix', 'patched', 'not_affected') %}
+  <a class="kpi {{ 'bad' if s in ('vulnerable', 'vulnerable_nofix', 'wontfix', 'upstream_vulnerable') else 'warn' if s == 'third_party' else 'ok' if s in ('patched', 'not_affected', 'upstream_patched') else '' }}"
+     href="/cve?id={{ cve_id }}&state={{ s }}"><div class="n">{{ counts[s] }}</div><div class="l">{{ states[s] }}</div></a>
+  {% endif %}
+  {% endfor %}
+</div>
+
+{% from "_multi.html" import multi %}
+<h2 style="margin:0 0 10px">{{ results|length }} results{% if results|length != all_count %} <span class="muted small">(of {{ all_count }})</span>{% endif %}</h2>
+{# One row: quick text filter, the filters (they apply when a dropdown closes) and the actions #}
+<form method="get" class="filters" data-auto>
+  <input type="hidden" name="id" value="{{ cve_id }}">
+  <input data-filter="#cve-table" placeholder="Filter results..." onkeydown="if (event.key === 'Enter') event.preventDefault()">
+  {{ multi("state", "Any status", state_options, p.state) }}
+  {{ multi("os", "All operating systems", os_options, p.os) }}
+  {{ multi("client", "All organizations", org_options, p.client) }}
+  {% if p.state or p.os or p.client %}<a href="/cve?id={{ cve_id }}">Clear filters</a>{% endif %}
+  <span style="margin-left:auto;display:flex;gap:8px">
+    {% if vulnerable_ids %}<button type="button" onclick="location.href='/commands?ids={{ vulnerable_ids|join(',') }}'" title="Remote execution on the vulnerable servers">Run on vulnerable servers</button>{% endif %}
+    {% if results %}<a class="btn" href="/cve.csv?{{ qs }}">Export CSV</a>{% endif %}
+  </span>
+</form>
+{% if results %}
+<div class="table-wrap"><table id="cve-table">
+  <thead><tr><th class="sortable">Server</th><th class="sortable">Where</th><th class="sortable">OS</th><th class="sortable">Package</th>
+    <th class="sortable">Installed</th><th class="sortable">Fixed in</th><th class="sortable">Advisory</th><th class="sortable">Status</th></tr></thead>
+  <tbody>{% for r in results %}<tr>
+    <td><a href="/vms/{{ r.vm_id }}">{{ r.server }}</a><div class="muted small mono">{{ r.host }}</div></td>
+    <td>{% if r.container %}<span class="badge b-muted">{{ r.container }}</span><div class="muted small mono">{{ r.image }}</div>{% else %}<span class="muted">Host</span>{% endif %}</td>
+    <td class="small">{{ r.os }}</td>
+    <td><b>{{ r.package }}</b><div class="muted small mono" title="{{ r.binaries|join(', ') }}">{{ r.binaries|join(', ')|truncate(60) }}</div></td>
+    <td class="mono small">{{ r.installed }}{% if r.note %}<div class="muted" style="font-family:inherit">{{ r.note }}</div>{% endif %}</td>
+    <td class="mono small">{{ r.fixed or '—' }}</td>
+    <td class="small">{{ r.advisory or '' }}{% if r.via %} <span class="muted">({{ r.via }})</span>{% endif %}</td>
+    <td data-sort="{{ loop.index0 }}">
+      {% if r.state == 'vulnerable' %}<span class="badge st b-bad">Vulnerable</span>
+      {% elif r.state == 'vulnerable_nofix' %}<span class="badge st b-bad">Vulnerable, no fix yet</span>
+      {% elif r.state == 'wontfix' %}<span class="badge st b-bad">Vulnerable, vendor will not fix</span>
+      {% elif r.state == 'upstream_vulnerable' %}<span class="badge st b-bad" title="Third-party package or software installed by hand, compared with the versions published by the software's vendor">Vulnerable (software vendor's versions)</span>
+      {% elif r.state == 'upstream_patched' %}<span class="badge st b-ok" title="Third-party package or software installed by hand, compared with the versions published by the software's vendor">Not vulnerable (software vendor's versions)</span>
+      {% elif r.state == 'third_party' %}<span class="badge st b-warn" title="The distribution's data does not apply to a package built by someone else">Third-party package: check with its vendor</span>
+      {% elif r.state == 'patched' %}<span class="badge st b-ok">Patched</span>
+      {% elif r.state == 'not_affected' %}<span class="badge st b-ok">Not affected</span>
+      {% else %}<span class="badge st b-muted" title="The vendor has no information for this OS version, or its source did not answer">No data</span>{% endif %}</td>
+  </tr>{% endfor %}</tbody>
+</table></div>
+{% elif all_count == 0 %}
+<p class="muted">No server in the inventory has a package mentioned by the vendors for this CVE.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

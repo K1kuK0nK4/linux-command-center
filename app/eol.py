@@ -52,8 +52,11 @@ PATTERNS = [
 RPM_VENDORS = {"rhel": r"Red Hat", "centos": r"CentOS", "rocky": r"Rocky", "almalinux": r"AlmaLinux",
                "ol": r"Oracle", "amzn": r"Amazon", "sles": r"SUSE", "opensuse-leap": r"SUSE|openSUSE",
                "fedora": r"Fedora"}
-DEB_DISTRO = re.compile(r"@(lists\.)?(ubuntu\.com|canonical\.com|debian\.org)|@tracker\.debian\.org"
+DEB_DISTRO = re.compile(r"@(lists\.|packages\.)?(ubuntu\.com|canonical\.com|debian\.org)|@tracker\.debian\.org"
                         r"|alioth-lists\.debian\.net|lists\.alioth\.debian\.org", re.I)
+# Version suffixes that only the distribution itself uses (1.2-3ubuntu0.4, 1.2-3+deb12u1). Third-party
+# repositories write e.g. "~ubuntu.24.04~noble" or "~debian.12~bookworm", which do not match.
+DEB_DISTRO_VERSION = re.compile(r"ubuntu\d|\+deb\d+u\d")
 
 
 def enabled():
@@ -77,7 +80,7 @@ def _release(r):
 
 def parse_catalog(catalog):
     """({product: cycles}, {package name: product}) from the v1 'products/full' answer."""
-    data, index = {}, {}
+    data, index, products = {}, {}, {}
     for p in sorted(catalog.get("result") or [], key=lambda p: str(p.get("name"))):
         name = p.get("name")
         if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9.\-]*", name):
@@ -85,6 +88,11 @@ def parse_catalog(catalog):
         data[name] = [_release(r) for r in p.get("releases") or [] if isinstance(r, dict) and r.get("name")]
         if p.get("category") in SKIP_CATEGORIES:
             continue
+        # Commercial name and CPE "vendor:product" ids: they let the CVE lookup recognise the product
+        # named by the software vendor (e.g. "Apache HTTP Server", cpe apache:http_server)
+        cpes = sorted({":".join(str(i.get("id")).split(":")[3:5]) for i in p.get("identifiers") or []
+                       if i.get("type") == "cpe" and str(i.get("id")).startswith("cpe:2.3:")})
+        products[name] = {"label": str(p.get("label") or name), "cpe": cpes}
         for ident in p.get("identifiers") or []:
             kind, value = ident.get("type"), str(ident.get("id") or "")
             if kind == "repology":
@@ -95,7 +103,13 @@ def parse_catalog(catalog):
                 continue
             if pkg:
                 index.setdefault(pkg, name)
+    index["__products__"] = products         # not a package name: product -> {label, cpe}
     return data, index
+
+
+def product_info(product):
+    """{'label': 'Apache HTTP Server', 'cpe': ['apache:http_server']} of an endoflife.date product."""
+    return (_index().get("__products__") or {}).get(product) or {"label": product, "cpe": []}
 
 
 def download(proxy=""):
@@ -229,6 +243,8 @@ def third_party(os_id, pkg):
         return not re.search("|".join(v for k, v in RPM_VENDORS.items() if k != "fedora"), vendor, re.I)
     if "sury" in (pkg["version"] or "") or "sury" in vendor:     # the popular PHP PPA keeps Debian's maintainer
         return True
+    if DEB_DISTRO_VERSION.search(pkg["version"] or ""):
+        return False                 # built by Ubuntu/Debian, whatever the maintainer field says
     return not DEB_DISTRO.search(vendor)
 
 

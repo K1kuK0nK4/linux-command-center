@@ -237,7 +237,11 @@ def _migrate(c):
     # Credential owned by a single server (does not appear in the shared credentials list)
     _add_columns(c, "credentials", [("owner_vm_id", "INTEGER")])
     # packages.container: NULL = host package; otherwise, the name of the container it is in
-    _add_columns(c, "packages", [("container", "TEXT"), ("vendor", "TEXT")])
+    _add_columns(c, "packages", [("container", "TEXT"), ("vendor", "TEXT"), ("src_name", "TEXT"),
+                                 ("path", "TEXT"), ("owner", "TEXT")])
+    _add_columns(c, "probes", [("cpe", "TEXT")])
+    _add_columns(c, "containers", [("os_id", "TEXT")])
+    c.execute("CREATE INDEX IF NOT EXISTS ix_packages_src ON packages(src_name)")
     _add_columns(c, "package_changes", [("container", "TEXT")])
     _add_columns(c, "vms", [("container_count", "INTEGER"), ("containers_error", "TEXT"),
                             ("pending_host_key", "TEXT"), ("jump_vm_id", "INTEGER")])

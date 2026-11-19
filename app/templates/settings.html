@@ -81,10 +81,14 @@
 
 <div class="card" id="probes">
   <h2>Version detection</h2>
-  <p class="small muted" style="margin-top:0">They detect software installed outside the system packages (hand-compiled, Java, Node...) by running its version command, on the host and inside containers. They only run if the executable exists. The <b>regular expression</b> must have a group <code>( )</code> that captures the version.</p>
+  <p class="small muted" style="margin-top:0">They detect software installed outside the system packages (hand-compiled, Java, Node...) by running its version command, on the host and inside containers. They only run if the executable exists. The <b>regular expression</b> must have a group <code>( )</code> that captures the version.
+    Every copy of the program is found (PATH, <code>/opt</code>, <code>/usr/local</code>…) and the package manager is asked who installed it:
+    copies installed by hand are compared in the CVE lookup with the software vendor's data, using the <b>product (CPE)</b>
+    (e.g. <code>grafana:grafana</code>, as in nvd.nist.gov).</p>
   <form method="post" action="/settings/probes" autocomplete="off">
     <div class="table-wrap" style="max-height:420px"><table>
-      <thead><tr><th>Enabled</th><th>Name</th><th>Executable</th><th>Command</th><th>Expression (version)</th><th></th></tr></thead>
+      <thead><tr><th>Enabled</th><th>Name</th><th>Executable</th><th>Command</th><th>Expression (version)</th>
+        <th title="Vendor and product as in its CPE: the CVE lookup uses it to compare with the software vendor's affected versions">Product (CPE)</th><th></th></tr></thead>
       <tbody>
       {% for pr in probes %}<tr>
         <td><input type="checkbox" name="enabled_{{ pr.id }}" value="1" {{ 'checked' if pr.enabled }}></td>
@@ -92,6 +96,7 @@
         <td><input name="bin_{{ pr.id }}" value="{{ pr.bin }}" class="mono" style="width:120px"></td>
         <td><input name="command_{{ pr.id }}" value="{{ pr.command }}" class="mono" style="width:200px"></td>
         <td><input name="regex_{{ pr.id }}" value="{{ pr.regex }}" class="mono" style="width:200px"></td>
+        <td><input name="cpe_{{ pr.id }}" value="{{ pr.cpe or '' }}" class="mono" style="width:150px" placeholder="vendor:product"></td>
         <td><button type="submit" class="danger" formaction="/settings/probes/{{ pr.id }}/delete" formnovalidate
               data-confirm="Delete the detection “{{ pr.name }}”? Unsaved changes in the rest of the table will be lost."
               title="Delete this detection">Delete</button></td>
@@ -102,6 +107,7 @@
         <td><input name="new_bin" placeholder="/opt/miapp/bin/miapp" class="mono" style="width:120px"></td>
         <td><input name="new_command" placeholder="/opt/miapp/bin/miapp --version" class="mono" style="width:200px"></td>
         <td><input name="new_regex" placeholder="version ([\d.]+)" class="mono" style="width:200px"></td>
+        <td><input name="new_cpe" placeholder="grafana:grafana" class="mono" style="width:150px"></td>
         <td></td>
       </tr>
       </tbody>
@@ -115,7 +121,8 @@
   <p class="small muted" style="margin-top:0">Support dates of operating systems and applications come from
     <b>endoflife.date</b>. Its public catalog is downloaded in a single request, the same for everyone:
     nothing about your inventory leaves this computer. Applications are detected automatically from the
-    scanned packages. Without Internet the last download is used.</p>
+    scanned packages. The CISA catalog of actively exploited vulnerabilities (KEV), used by the CVE lookup, is
+    downloaded at the same time. Without Internet the last download is used.</p>
   <p class="small">Last update: <b>{{ online.last or 'never' }}</b>{% if online.attempt and online.attempt != online.last %}
     · last attempt {{ online.attempt }}{% endif %}</p>
   {% if online.errors %}<div class="alert warn small">Could not download: {% for p, e in online.errors.items() %}<code>{{ p }}</code> ({{ e }}){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}

@@ -1112,3 +1112,117 @@ ES.update({
     "(hours)": "(horas)",
     "Runs in the background, so logging in does not wait. Only while automatic updates are on.": "Se hace en segundo plano, así que el inicio de sesión no espera. Solo con la actualización automática activada."
 })
+
+# CVE lookup
+ES.update({
+    "CVE lookup": "Búsqueda de CVE",
+    "Look up": "Buscar",
+    "Check sources again": "Consultar de nuevo las fuentes",
+    "Ask the sources again instead of using the copy of the last hours": "Vuelve a preguntar a las fuentes en vez de usar la copia de las últimas horas",
+    "Only the CVE ID is sent to the vendors' public sources (Red Hat, Ubuntu, and OSV for Debian and Alpine). The result compares": "Solo se envía el identificador del CVE a las fuentes públicas de los fabricantes (Red Hat, Ubuntu y OSV para Debian y Alpine). El resultado compara",
+    "versions": "versiones",
+    ": conditions such as \"only if a module is enabled\" are not checked, read the vendor notes below.": ": no se comprueban condiciones como \"solo si un módulo está activado\"; revisa las notas del fabricante más abajo.",
+    "Actively exploited (CISA KEV)": "Explotada activamente (CISA KEV)",
+    "CISA Known Exploited Vulnerabilities": "Catálogo de CISA de vulnerabilidades explotadas",
+    "In the CISA KEV catalog since": "En el catálogo CISA KEV desde",
+    "used in ransomware campaigns": "usada en campañas de ransomware",
+    "The CISA KEV catalog could not be downloaded: the \"actively exploited\" flag is not available.": "No se pudo descargar el catálogo CISA KEV: la marca \"explotada activamente\" no está disponible.",
+    "Sources:": "Fuentes:",
+    "{name}: data": "{name}: con datos",
+    "{name}: error": "{name}: error",
+    "{name}: no record": "{name}: sin registro",
+    "Has data for this CVE": "Tiene datos de este CVE",
+    "No record for this CVE": "No tiene registro de este CVE",
+    "· checked {t}": "· consultado {t}",
+    "Vendor notes and mitigation": "Notas y mitigación del fabricante",
+    "· conditions to check by hand": "· condiciones a revisar a mano",
+    "Red Hat · Statement": "Red Hat · Declaración",
+    "Red Hat · Mitigation": "Red Hat · Mitigación",
+    "Ubuntu · Mitigation": "Ubuntu · Mitigación",
+    "Ubuntu · Note": "Ubuntu · Nota",
+    "{n} servers were scanned before the source package of each package was recorded: their results may be incomplete (e.g.": "{n} servidores se escanearon antes de registrar el paquete fuente de cada paquete: sus resultados pueden estar incompletos (p. ej.",
+    "is not linked to": "no se asocia con",
+    "). Scan them again.": "). Vuelve a escanearlos.",
+    "Vulnerable": "Vulnerable",
+    "Vulnerable, no fix yet": "Vulnerable, sin parche aún",
+    "Vulnerable, vendor will not fix": "Vulnerable, el fabricante no lo corregirá",
+    "Patched": "Parcheado",
+    "Not affected": "No afectado",
+    "{n} results": "{n} resultados",
+    "(of {n})": "(de {n})",
+    "Run on vulnerable servers": "Ejecutar en los vulnerables",
+    "Remote execution on the vulnerable servers": "Ejecución remota en los servidores vulnerables",
+    "Installed": "Instalada",
+    "Fixed in": "Corregido en",
+    "Advisory": "Aviso",
+    "The vendor has no information for this OS version, or its source did not answer": "El fabricante no tiene información para esta versión del sistema, o su fuente no respondió",
+    "No server in the inventory has a package mentioned by the vendors for this CVE.": "Ningún servidor del inventario tiene un paquete que los fabricantes mencionen para este CVE.",
+    "Write a CVE ID like CVE-2024-6387": "Escribe un identificador de CVE como CVE-2024-6387",
+    ". Its public catalog is downloaded in a single request, the same for everyone: nothing about your inventory leaves this computer. Applications are detected automatically from the scanned packages. The CISA catalog of actively exploited vulnerabilities (KEV), used by the CVE lookup, is downloaded at the same time. Without Internet the last download is used.": ". Su catálogo público se descarga en una sola petición, igual para todo el mundo: nada de tu inventario sale de este equipo. Las aplicaciones se detectan solas a partir de los paquetes escaneados. El catálogo de CISA de vulnerabilidades explotadas activamente (KEV), que usa la búsqueda de CVE, se descarga a la vez. Sin Internet se usa la última descarga."
+})
+
+# CVE lookup review
+ES.update({
+    "running kernel": "kernel en ejecución",
+    "running kernel not found among the installed packages: all of them are compared": "el kernel en ejecución no está entre los paquetes instalados: se comparan todos",
+    "All operating systems": "Todos los sistemas operativos"
+})
+
+# CVE lookup: third-party packages
+ES.update({
+    "Third-party package: check with its vendor": "Paquete de terceros: revisar con su fabricante",
+    "The distribution's data does not apply to a package built by someone else": "Los datos de la distribución no valen para un paquete publicado por otro",
+    "built by {v}": "publicado por {v}"
+})
+
+ES.update({
+    "who built it is unknown until the server is scanned again (it could be a third-party package)": "no se sabe quién lo publica hasta volver a escanear el servidor (podría ser un paquete de terceros)"
+})
+
+# CVE lookup: upstream estimate
+ES.update({
+    "Vulnerable (estimated from the upstream version)": "Vulnerable (estimado por la versión upstream)",
+    "Patched (estimated from the upstream version)": "Parcheado (estimado por la versión upstream)",
+    "Third-party package compared with the fixed version of the original project: an estimate, check its vendor's advisory": "Paquete de terceros comparado con la versión corregida del proyecto original: es una estimación, revisa el aviso de su fabricante"
+})
+
+# CVE lookup: software vendor data
+ES.update({
+    "Vulnerable (software vendor's versions)": "Vulnerable (versiones del fabricante del software)",
+    "Not vulnerable (software vendor's versions)": "No vulnerable (versiones del fabricante del software)",
+    "Third-party package or software installed by hand, compared with the versions published by the software's vendor": "Paquete de terceros o software instalado a mano, comparado con las versiones que publica el fabricante del software",
+    "Software vendor data": "Datos del fabricante del software",
+    "· affected versions of the product itself (applies to third-party packages and software installed by hand, not to distribution packages)": "· versiones afectadas del propio producto (se aplican a paquetes de terceros y software instalado a mano, no a paquetes de la distribución)",
+    "Vendor": "Fabricante",
+    "Product": "Producto",
+    "Affected versions": "Versiones afectadas",
+    "installed outside the package manager (found by running the program)": "instalado fuera del gestor de paquetes (detectado ejecutando el programa)",
+    "Vendor · Workaround": "Fabricante · Solución temporal"
+})
+
+# CVE lookup: failed sources
+ES.update({
+    "{name} did not answer:": "{name} no respondió:",
+    "{n} servers or containers of that distribution could not be evaluated and are not in the result. Use \"Check sources again\" in a while.": "{n} servidores o contenedores de esa distribución no se han podido evaluar y no están en el resultado. Usa \"Consultar de nuevo las fuentes\" dentro de un rato."
+})
+
+# CVE lookup: review notes
+ES.update({
+    "running kernel: the vendor publishes no data for it (e.g. Oracle UEK)": "kernel en ejecución: el fabricante no publica datos de él (p. ej. Oracle UEK)",
+    "installed but not running (running: {k}): check the running kernel by hand": "instalado pero no en ejecución (en ejecución: {k}): revisa a mano el kernel en ejecución",
+    "running kernel unknown: all installed kernels are compared": "kernel en ejecución desconocido: se comparan todos los instalados",
+    "the distribution has not published data on this CVE yet": "la distribución aún no ha publicado datos de este CVE"
+})
+
+# Probes: every copy, owner and CPE
+ES.update({
+    "Product (CPE)": "Producto (CPE)",
+    "Vendor and product as in its CPE: the CVE lookup uses it to compare with the software vendor's affected versions": "Fabricante y producto como en su CPE: la búsqueda de CVE lo usa para comparar con las versiones afectadas que publica el fabricante del software",
+    "that captures the version. Every copy of the program is found (PATH,": "que capture la versión. Se localiza cada copia del programa (PATH,",
+    "…) and the package manager is asked who installed it: copies installed by hand are compared in the CVE lookup with the software vendor's data, using the": "…) y se pregunta al gestor de paquetes quién la instaló: las copias instaladas a mano se comparan en la búsqueda de CVE con los datos del fabricante del software, usando el",
+    "product (CPE)": "producto (CPE)",
+    "(e.g.": "(p. ej.",
+    ", as in nvd.nist.gov).": ", como en nvd.nist.gov).",
+    "The product must look like vendor:product (e.g. grafana:grafana), not “{v}”": "El producto debe tener la forma fabricante:producto (p. ej. grafana:grafana), no “{v}”",
+    "installed outside the package manager: {p}": "instalado fuera del gestor de paquetes: {p}"
+})

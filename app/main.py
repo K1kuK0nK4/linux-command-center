@@ -24,8 +24,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.background import BackgroundTask
 
-from . import (backup, charts, collector, db, eol, files, i18n, jobs, safety, ssh, syslog, terminal, transfer,
-               versions)
+from . import (backup, charts, collector, cve, db, eol, files, i18n, jobs, safety, ssh, syslog, terminal,
+               transfer, versions)
 from .vault import derive as derive_key
 from .vault import vault
 
@@ -104,6 +104,7 @@ AUDIT_ACTIONS = {
     "hostkey_reset": "SSH fingerprint reset", "huellas_config": "SSH fingerprint settings",
     "terminal_abierta": "Terminal opened", "terminal_cerrada": "Terminal closed",
     "terminal_peligroso_confirmado": "Dangerous command confirmed (terminal)",
+    "cve_consulta": "CVE lookup",
     "comando_masivo": "Remote execution", "comando_peligroso_confirmado": "Dangerous command confirmed",
     "ejecucion_cancelada": "Run cancelled", "ficheros_root": "Files as root",
     "comando_guardado": "Command saved", "comando_eliminado": "Command deleted",
@@ -563,7 +564,7 @@ async def dashboard_widgets_save(request: Request):
 # ---------- servers ----------
 
 MULTI_FILTERS = ("client", "environment", "tag", "os_family", "os_name", "os", "upd_age", "sec", "eol",
-                 "status", "containers", "support", "origin")
+                 "status", "containers", "support", "origin", "state")
 
 # Chart buckets (clicking a bar opens the inventory filtered by that bucket)
 _DAYS = "(julianday('now','localtime') - julianday(vms.last_pkg_update))"
@@ -1442,6 +1443,77 @@ async def search(request: Request):
                   envs=distinct("environment"), tags=all_tags(), qs=urlencode(p, doseq=True))
 
 
+# ---------- CVE lookup ----------
+
+async def cve_result(cve_id, refresh=False):
+    """Vendor data for the CVE (cached a few hours) and its comparison with the inventory."""
+    data = None if refresh else cve.cached(cve_id)
+    if not data:
+        fetched = await asyncio.to_thread(cve.fetch, cve_id, db.get_setting("http_proxy", ""))
+        answered = any(s["error"] is None for s in fetched["sources"].values())
+        data = cve.store(cve_id, fetched) if answered else {**fetched, "fetched_at": None}
+    if not cve.kev_loaded()[0]:          # first lookup before the daily download: get the KEV catalog now
+        catalog, _ = await asyncio.to_thread(cve.download_kev, db.get_setting("http_proxy", ""))
+        if catalog:
+            cve.store_kev(catalog)
+    results = cve.evaluate(cve.rules_of(data), cve.vendor_data(data))
+    sources = [(cve.SOURCE_NAMES[k], "error" if s["error"] else "found" if s["data"] else "none", s["error"])
+               for k, s in data["sources"].items()]
+    return data, results, sources
+
+
+def cve_filter(results, p):
+    """Filters of the CVE page: status, operating system and organization (several values each)."""
+    states, oses, orgs = as_list(p.get("state")), as_list(p.get("os")), as_list(p.get("client"))
+    return [r for r in results
+            if (not states or r["state"] in states) and (not oses or r["os"] in oses)
+            and (not orgs or (r["client"] or NONE_VALUE) in orgs)]
+
+
+@app.get("/cve")
+async def cve_page(request: Request):
+    p = query_dict(request)
+    raw = (p.get("id") or "").strip()
+    cve_id = cve.normalize(raw)
+    ctx = {"p": p, "cve_id": cve_id, "error": None, "results": None}
+    if raw and not cve_id:
+        ctx["error"] = "Write a CVE ID like CVE-2024-6387"
+    elif cve_id:
+        data, results, sources = await cve_result(cve_id, refresh=bool(p.get("refresh")))
+        db.audit("cve_consulta", cve_id)
+        shown = cve_filter(results, p)
+        counts = {s: len({(r["vm_id"]) for r in results if r["state"] == s}) for s in cve.STATES}
+        ctx.update(state_options=[(s, cve.STATE_LABELS[s]) for s in cve.STATES if counts[s]],
+                   os_options=[(o, o) for o in sorted({r["os"] for r in results})],
+                   org_options=[(c or NONE_VALUE, c or "(no organization)")
+                                for c in sorted({r["client"] or "" for r in results})])
+        ctx.update(results=shown, all_count=len(results), counts=counts, sources=sources, info=cve.info_of(data),
+                   vendor=cve.vendor_summary(data), unevaluated=cve.unevaluated(data),
+                   kev=cve.kev_info(cve_id), kev_loaded=cve.kev_loaded(), fetched_at=data.get("fetched_at"),
+                   missing_sources=cve.missing_sources(), qs=urlencode(p, doseq=True),
+                   vulnerable_ids=sorted({r["vm_id"] for r in shown      # respects the filters
+                                          if r["state"] in cve.BAD_STATES}))
+    return render(request, "cve.html", states=cve.STATE_LABELS, **ctx)
+
+
+@app.get("/cve.csv")
+async def cve_csv(request: Request):
+    p = query_dict(request)
+    cve_id = cve.normalize(p.get("id"))
+    if not cve_id:
+        return redirect("/cve")
+    _, results, _ = await cve_result(cve_id)
+    results = cve_filter(results, p)
+    return csv_response(f"{cve_id}.csv", ["CVE", "Server", "Host", "Organization", "Environment", "Where", "Image",
+                                         "OS", "Source package", "Packages", "Installed", "Fixed in", "Advisory",
+                                         "Data from", "Status"],
+                        [(cve_id, r["server"], r["host"], r["client"], r["environment"],
+                          f"container {r['container']}" if r["container"] else "host", r["image"] or "", r["os"],
+                          r["package"], " ".join(r["binaries"]), r["installed"], r["fixed"] or "", r["advisory"],
+                          r["via"], cve.STATE_LABELS[r["state"]])
+                         for r in results])
+
+
 @app.get("/search.csv")
 async def search_csv(request: Request):
     rows = run_search(query_dict(request))
@@ -1843,6 +1915,17 @@ def probe_problem(name, binary, command, regex):
     return None
 
 
+def probe_cpe(value, errors):
+    """Optional product of a probe as CPE 'vendor:product' (e.g. grafana:grafana), used by the CVE lookup."""
+    value = (value or "").strip().lower()
+    if value.startswith("cpe:2.3:"):
+        value = ":".join(value.split(":")[3:5])     # a full CPE is accepted too
+    if value and not re.fullmatch(r"[a-z0-9_.\-~]+:[a-z0-9_.\-~]+", value):
+        errors.append(f"The product must look like vendor:product (e.g. grafana:grafana), not “{value}”")
+        return None
+    return value or None
+
+
 @app.post("/settings/probes")
 async def settings_probes(request: Request):
     form = await request.form()
@@ -1854,15 +1937,17 @@ async def settings_probes(request: Request):
         if problem:
             errors.append(problem)
             continue
-        db.ex("UPDATE probes SET name=?, bin=?, command=?, regex=?, enabled=? WHERE id=?",
-              (*vals, 1 if form.get(f"enabled_{pid}") else 0, pid))
+        cpe = probe_cpe(form.get(f"cpe_{pid}", ""), errors)
+        db.ex("UPDATE probes SET name=?, bin=?, command=?, regex=?, enabled=?, cpe=? WHERE id=?",
+              (*vals, 1 if form.get(f"enabled_{pid}") else 0, cpe, pid))
     new = [form.get(f"new_{k}", "").strip() for k in ("name", "bin", "command", "regex")]
     if any(new):
         problem = probe_problem(*new)
         if problem:
             errors.append(problem)
         else:
-            db.ex("INSERT INTO probes(name, bin, command, regex) VALUES(?,?,?,?)", new)
+            db.ex("INSERT INTO probes(name, bin, command, regex, cpe) VALUES(?,?,?,?,?)",
+                  (*new, probe_cpe(form.get("new_cpe", ""), errors)))
     db.audit("sondas", "Version detection changed")
     if errors:   # shown directly (error texts do not travel in the URL)
         return settings_view(request, error=" · ".join(errors))
@@ -2259,6 +2344,12 @@ async def refresh_online_data():
         data, index, errors = await asyncio.to_thread(eol.download, db.get_setting("http_proxy", ""))
         eol.store(data, index)
         eol.sync_tags()
+        # CISA catalog of actively exploited vulnerabilities, for the CVE lookup
+        catalog, kev_error = await asyncio.to_thread(cve.download_kev, db.get_setting("http_proxy", ""))
+        if catalog:
+            cve.store_kev(catalog)
+        else:
+            errors["cisa-kev"] = kev_error
         db.set_setting("online_last_attempt", db.now())
         db.set_setting("online_errors", json.dumps(errors))
         return data, errors
@@ -2303,6 +2394,7 @@ async def maintenance_loop():
             maybe_auto_lock()
             if vault.initialized and time.time() - last_cleanup > 86400:
                 last_cleanup = time.time()
+                cve.prune()                 # old CVE lookups (also pruned on every new lookup)
                 n = apply_retention()
                 if n:
                     db.audit("limpieza_historial", f"{n} old records deleted")

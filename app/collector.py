@@ -23,6 +23,26 @@ export LC_ALL=C LANG=C
 sec() { echo "@@@VMINV@@@ $1"; }
 has() { command -v "$1" >/dev/null 2>&1; }
 T=""; has timeout && T="timeout 10"
+# Package manager of the distribution itself: a RHEL host can also have dpkg (EPEL) and must still be read as rpm
+PKG=""
+if has rpm && grep -qiE '^ID(_LIKE)?="?[^"]*(rhel|fedora|centos|suse|amzn)' /etc/os-release 2>/dev/null; then PKG=rpm
+elif has dpkg-query; then PKG=deb
+elif has rpm; then PKG=rpm
+elif has apk; then PKG=apk
+fi
+# Package that installed a file ("" = none: installed by hand). /usr/bin/x may be registered as /bin/x.
+lcc_owner_q() {
+  case "$PKG" in
+    rpm) rpm -qf --qf '%{NAME}\n' "$1" 2>/dev/null | grep -v ' ' | head -n 1 ;;
+    deb) dpkg -S "$1" 2>/dev/null | head -n 1 | cut -d: -f1 ;;
+    apk) apk info --who-owns "$1" 2>/dev/null | awk '{print $NF}' | head -n 1 ;;
+  esac
+}
+lcc_owner() {
+  o=$(lcc_owner_q "$1")
+  if [ -z "$o" ]; then case "$1" in /usr/bin/*|/usr/sbin/*|/usr/lib/*|/usr/lib64/*) o=$(lcc_owner_q "${1#/usr}");; esac; fi
+  echo "$o"
+}
 """
 
 SCRIPT = SCRIPT_HEAD + r"""
@@ -33,24 +53,27 @@ sec KERNEL; uname -r
 sec ARCH; uname -m
 sec UPTIME; cat /proc/uptime 2>/dev/null
 sec REBOOTREQ; [ -f /var/run/reboot-required ] && echo yes
-if has dpkg-query; then
+if [ "$PKG" = deb ]; then
   sec DPKG; dpkg-query -W -f='${Status}|${Package}|${Version}|${Architecture}\n' </dev/null 2>/dev/null
   sec APTHIST
   { cat /var/log/apt/history.log 2>/dev/null; zcat /var/log/apt/history.log.*.gz 2>/dev/null; } \
     | awk '/^Start-Date:/{d=$2" "$3} /^Upgrade:/{print d" U"} /^Install:/{print d" I"}' | sort -r | head -n 20
   sec DPKGMTIME; stat -c %Y /var/lib/dpkg/status 2>/dev/null
   sec DPKGVENDOR; dpkg-query -W -f='${Package}|${Maintainer}\n' </dev/null 2>/dev/null
+  sec DPKGSRC; dpkg-query -W -f='${Package}|${source:Package}\n' </dev/null 2>/dev/null
   sec APTUPG; has apt && apt list --upgradable </dev/null 2>/dev/null
-elif has rpm; then
+elif [ "$PKG" = rpm ]; then
   sec RPM; rpm -qa --qf '%{NAME}|%{EPOCH}|%{VERSION}|%{RELEASE}|%{ARCH}|%{INSTALLTIME}\n' </dev/null 2>/dev/null
   sec RPMVENDOR; rpm -qa --qf '%{NAME}|%{VENDOR}\n' </dev/null 2>/dev/null
+  sec RPMSRC; rpm -qa --qf '%{NAME}|%{SOURCERPM}\n' </dev/null 2>/dev/null
   if has dnf; then PM=dnf; else PM=yum; fi
   sec RPMUPG; timeout 60 $PM -q -C check-update </dev/null 2>/dev/null; echo "EXIT=$?"
   sec RPMSEC
   if [ "$PM" = dnf ]; then timeout 60 dnf -q -C updateinfo list --security </dev/null 2>/dev/null; echo "EXIT=$?"
   else timeout 60 yum -q -C updateinfo list security </dev/null 2>/dev/null; echo "EXIT=$?"; fi
-elif has apk; then
+elif [ "$PKG" = apk ]; then
   sec APK; apk info -v </dev/null 2>/dev/null
+  sec APKSRC; awk -F: '/^P:/{p=$2} /^o:/{print p"|"$2}' /lib/apk/db/installed 2>/dev/null
 fi
 sec SNAP; has snap && snap list </dev/null 2>/dev/null
 sec PORTS; ss -tuln </dev/null 2>/dev/null || netstat -tuln </dev/null 2>/dev/null
@@ -63,12 +86,17 @@ sec SERVICES; has systemctl && systemctl list-units --type=service --state=runni
 # Script run INSIDE each running container (read-only)
 CONTAINER_SCRIPT = SCRIPT_HEAD + r"""
 sec OSRELEASE; cat /etc/os-release 2>/dev/null
-if has dpkg-query; then
+if [ "$PKG" = deb ]; then
   sec DPKG; dpkg-query -W -f='${Status}|${Package}|${Version}|${Architecture}\n' 2>/dev/null
-elif has rpm; then
+  sec DPKGSRC; dpkg-query -W -f='${Package}|${source:Package}\n' 2>/dev/null
+  sec DPKGVENDOR; dpkg-query -W -f='${Package}|${Maintainer}\n' 2>/dev/null
+elif [ "$PKG" = rpm ]; then
   sec RPM; rpm -qa --qf '%{NAME}|%{EPOCH}|%{VERSION}|%{RELEASE}|%{ARCH}|%{INSTALLTIME}\n' 2>/dev/null
-elif has apk; then
+  sec RPMSRC; rpm -qa --qf '%{NAME}|%{SOURCERPM}\n' 2>/dev/null
+  sec RPMVENDOR; rpm -qa --qf '%{NAME}|%{VENDOR}\n' 2>/dev/null
+elif [ "$PKG" = apk ]; then
   sec APK; apk info -v 2>/dev/null
+  sec APKSRC; awk -F: '/^P:/{p=$2} /^o:/{print p"|"$2}' /lib/apk/db/installed 2>/dev/null
 fi
 """
 
@@ -103,24 +131,73 @@ DEFAULT_PROBES = [
 ]
 
 
+# Product of each default probe as "vendor:product" of its CPE: the CVE lookup uses it to find the software
+# vendor's affected versions (CVE.org / NVD). Any probe added in Settings can be given one too.
+DEFAULT_PROBE_CPE = {
+    "nginx": "f5:nginx", "apache httpd": "apache:http_server", "apache2": "apache:http_server",
+    "openssl": "openssl:openssl", "openssh": "openbsd:openssh", "java": "oracle:jdk", "node": "nodejs:node.js",
+    "python3": "python:python", "php": "php:php", "postgresql": "postgresql:postgresql",
+    "psql": "postgresql:postgresql", "mysql/mariadb": "oracle:mysql", "redis": "redis:redis",
+    "mongodb": "mongodb:mongodb", "haproxy": "haproxy:haproxy", "docker": "docker:engine",
+    "podman": "podman_project:podman", "kubelet": "kubernetes:kubernetes", "sudo": "sudo_project:sudo",
+    "curl": "haxx:curl", "glibc": "gnu:glibc", "bash": "gnu:bash", "git": "git-scm:git", "tomcat": "apache:tomcat",
+}
+
+
 def seed_probes():
-    if db.get_setting("probes_seeded"):
-        return
-    for p in DEFAULT_PROBES:
-        db.ex("INSERT INTO probes(name, bin, command, regex) VALUES(?,?,?,?)", p)
-    db.set_setting("probes_seeded", 1)
+    if not db.get_setting("probes_seeded"):
+        for p in DEFAULT_PROBES:
+            db.ex("INSERT INTO probes(name, bin, command, regex) VALUES(?,?,?,?)", p)
+        db.set_setting("probes_seeded", 1)
+    for name, cpe in DEFAULT_PROBE_CPE.items():          # also for installations created before the CPE existed
+        db.ex("UPDATE probes SET cpe=? WHERE name=? AND (cpe IS NULL OR cpe='')", (cpe, name))
 
 
 def active_probes():
     return db.q("SELECT * FROM probes WHERE enabled=1 ORDER BY name")
 
 
+FILE_MARK = "@@@F "
+SEARCH_DIRS = "/opt /usr/local /srv /app /home"
+
+
 def probe_block(probes):
-    """Part of the script that runs the probes (only if the program exists)."""
-    lines = ["sec PROBES"]
+    """Part of the script that runs the probes. For every program it finds EVERY copy (the ones in the PATH and
+    the ones under /opt, /usr/local... up to a few levels), runs each one, and asks the package manager who
+    installed it (rpm -qf / dpkg -S / apk info --who-owns): a copy owned by no package was installed by hand.
+    Output per copy: "@@@F <path>|<owning package>" followed by the program's answer."""
+    bins = sorted({p["bin"] for p in probes if re.fullmatch(r"[\w.+-]+", p["bin"] or "")})
+    names = " -o ".join(f"-name {shlex.quote(b)}" for b in bins) or "-name lcc-none"
+    lines = ["sec PROBES",
+             # One single search for every program (bounded in depth and time), reused by each probe
+             f"LCC_FOUND=$($T find {SEARCH_DIRS} -maxdepth 6 -type f \\( {names} \\) -perm -u+x 2>/dev/null | head -n 200)",
+             "lcc_where() {",
+             '  { IFS=:; for d in $PATH; do [ -f "$d/$1" ] && [ -x "$d/$1" ] && echo "$d/$1"; done; unset IFS',
+             '    printf "%s\\n" "$LCC_FOUND" | grep "/$1\\$"; } | while read -r f; do [ -n "$f" ] && '
+             '(readlink -f "$f" 2>/dev/null || echo "$f"); done | sort -u | head -n 10',
+             "}"]
     for p in probes:
         lines.append(f"printf '%s\\n' {shlex.quote(PROBE_MARK + p['name'])}")
-        lines.append(f"if has {shlex.quote(p['bin'])}; then $T sh -c {shlex.quote(p['command'])} </dev/null 2>&1 | head -n 5; fi")
+        cmd, exe = p["command"] or "", p["bin"] or ""
+        if exe and re.fullmatch(r"[\w.+-]+", exe) and cmd.split(" ", 1)[0] == exe:
+            rest = cmd[len(exe):]
+            lines.append(f'for f in $(lcc_where {shlex.quote(exe)}); do printf "{FILE_MARK}%s|%s\\n" "$f" "$(lcc_owner "$f")"; '
+                         f"$T sh -c {shlex.quote(chr(34) + '$1' + chr(34) + rest)} lcc \"$f\" </dev/null 2>&1 | head -n 5; done")
+        else:            # a custom command that does not start with the program: run it as written
+            lines.append(f"if has {shlex.quote(exe)}; then $T sh -c {shlex.quote(cmd)} </dev/null 2>&1 | head -n 5; fi")
+        if exe == "openssl":
+            # OpenSSL libraries bundled inside applications (/opt/app/lib/libssl.so.1.1), the usual hiding place
+            lines.append(f"$T find {SEARCH_DIRS} -maxdepth 7 -name 'libssl.so*' -type f 2>/dev/null | head -n 20 | "
+                         'while read -r f; do o=$(lcc_owner "$f"); v=$(grep -a -m 1 -o "OpenSSL [0-9][0-9a-z.]*" "$f" 2>/dev/null | head -n 1); '
+                         f'[ -n "$v" ] && printf "{FILE_MARK}%s|%s\\n%s\\n" "$f" "$o" "$v"; done')
+        if exe == "catalina.sh":
+            # Tomcat has no command in the PATH: its folders come from the running processes and a short search
+            lines.append("{ ps -eo args 2>/dev/null | grep -o 'catalina.home=[^ ]*' | cut -d= -f2; "
+                         f"$T find {SEARCH_DIRS} /usr/share /var/lib -maxdepth 4 -name RELEASE-NOTES -path '*omcat*' 2>/dev/null "
+                         "| xargs -r -n 1 dirname; } | sort -u | head -n 10 | while read -r h; do "
+                         '[ -f "$h/RELEASE-NOTES" ] || continue; '
+                         f'printf "{FILE_MARK}%s|%s\\n" "$h" "$(lcc_owner "$h/RELEASE-NOTES")"; '
+                         'grep -m 1 -o "Apache Tomcat Version [0-9][0-9.]*" "$h/RELEASE-NOTES" | sed "s/ Version /\\//"; done')
     return "\n".join(lines) + "\n"
 
 
@@ -132,28 +209,54 @@ def container_script(probes):
     return CONTAINER_SCRIPT + probe_block(probes) + "sec END\n"
 
 
+def probe_variant(name, text):
+    """Who made the program, when its own output says it: Oracle Java vs OpenJDK builds, MySQL vs MariaDB."""
+    if name == "java":
+        if "Java(TM)" in text:
+            return "Oracle"
+        m = re.search(r"(Temurin|Zulu|Corretto|Semeru|Red_Hat|Microsoft|SapMachine|Liberica|GraalVM)", text)
+        return f"OpenJDK ({m.group(1).replace('_', ' ')})" if m else "OpenJDK"
+    if name == "mysql/mariadb":
+        return "MariaDB" if "mariadb" in text.lower() else "MySQL"
+    return ""
+
+
 def parse_probes(lines, probes):
-    """Returns [(name, version)] for the probes that answered."""
+    """Returns [(name, version, meta)] for every copy found; meta = {"path", "owner", "variant"}.
+    owner is the package that installed that file, "" when none (installed by hand), None if unknown
+    (older output without paths)."""
     regex = {p["name"]: p["regex"] for p in probes}
-    found, current, buf = [], None, []
+    found, current, buf, meta = [], None, [], {}
 
     def flush():
         if current and buf and current in regex:
+            text = "\n".join(buf)
             try:
-                m = re.search(regex[current], "\n".join(buf), re.M)
+                m = re.search(regex[current], text, re.M)
             except re.error:
                 m = None
             if m and m.group(1):
-                found.append((current, m.group(1)))
+                found.append((current, m.group(1), {**meta, "variant": probe_variant(current, text)}))
 
     for line in lines:
         if line.startswith(PROBE_MARK):
             flush()
-            current, buf = line[len(PROBE_MARK):].strip(), []
+            current, buf, meta = line[len(PROBE_MARK):].strip(), [], {"path": None, "owner": None}
+        elif current and line.startswith(FILE_MARK):
+            flush()
+            path, _, owner = line[len(FILE_MARK):].rstrip("\n").partition("|")
+            buf, meta = [], {"path": path.strip(), "owner": owner.strip()}
         elif current:
             buf.append(line)
     flush()
-    return found
+    # The same copy can be found twice (PATH and search): keep one per (name, path, version)
+    seen, out = set(), []
+    for name, version, m in found:
+        key = (name, m.get("path"), version)
+        if key not in seen:
+            seen.add(key)
+            out.append((name, version, m))
+    return out
 
 
 def split_sections(out):
@@ -208,9 +311,34 @@ def parse_container(out, probes=()):
         raise SSHError("The container script did not finish correctly")
     osr = parse_os_release(s.get("OSRELEASE", []))
     family, packages = parse_package_sections(s)
-    packages += [(name, ver, "", "probe") for name, ver in parse_probes(s.get("PROBES", []), probes)]
-    return {"os_name": osr.get("NAME", ""), "os_version": osr.get("VERSION_ID", ""), "os_family": family,
-            "packages": packages}
+    packages += [(name, ver, "", "probe", meta) for name, ver, meta in parse_probes(s.get("PROBES", []), probes)]
+    return {"os_id": osr.get("ID", ""), "os_name": osr.get("NAME", ""), "os_version": osr.get("VERSION_ID", ""),
+            "os_family": family, "packages": packages, "sources": parse_sources(s), "vendors": parse_vendors(s)}
+
+
+def parse_vendors(s):
+    """{package: who built it} (rpm Vendor / dpkg Maintainer): tells distribution packages from third-party ones."""
+    out = {}
+    for line in s.get("DPKGVENDOR", []) + s.get("RPMVENDOR", []):
+        name, sep, vendor = line.partition("|")
+        if sep and name.strip():
+            out[name.strip()] = vendor.strip() if vendor.strip() not in ("", "(none)") else "(none)"
+    return out
+
+
+def parse_sources(s):
+    """{package: source package}. Security trackers (Red Hat, Ubuntu, Debian, Alpine) publish fixes per
+    source package (e.g. apache2), while what is installed are binary packages (apache2-bin...)."""
+    out = {}
+    for line in s.get("DPKGSRC", []) + s.get("APKSRC", []):
+        name, sep, src = line.strip().partition("|")
+        if sep and name:
+            out[name] = src.split(" ")[0] or name          # dpkg may add "(version)" after the name
+    for line in s.get("RPMSRC", []):
+        name, sep, srpm = line.strip().partition("|")
+        if sep and name and srpm.endswith(".src.rpm"):
+            out[name] = srpm[:-len(".src.rpm")].rsplit("-", 2)[0]   # httpd-2.4.57-5.el9.src.rpm -> httpd
+    return out
 
 
 def script_failure(message, result):
@@ -303,12 +431,8 @@ def parse(out, probes=()):
     else:
         info["os_family"] = ""
 
-    # Who built each host package (rpm Vendor / dpkg Maintainer): tells distribution packages from third-party ones
-    info["vendors"] = {}
-    for line in s.get("DPKGVENDOR", []) + s.get("RPMVENDOR", []):
-        name, sep, vendor = line.partition("|")
-        if sep and name.strip():
-            info["vendors"][name.strip()] = vendor.strip() if vendor.strip() not in ("", "(none)") else "(none)"
+    info["sources"] = parse_sources(s)
+    info["vendors"] = parse_vendors(s)
 
     for line in s.get("SNAP", [])[1:]:
         parts = line.split()
@@ -317,7 +441,7 @@ def parse(out, probes=()):
 
     if info["kernel"]:
         packages.append(("kernel-running", info["kernel"], info["arch"], "kernel"))
-    packages += [(name, ver, "", "probe") for name, ver in parse_probes(s.get("PROBES", []), probes)]
+    packages += [(name, ver, "", "probe", meta) for name, ver, meta in parse_probes(s.get("PROBES", []), probes)]
 
     ports = set()
     for line in s.get("PORTS", []):
@@ -371,10 +495,13 @@ def _parse_rpm_security(lines):
 
 
 def save(vm_id, started_at, info, packages, ports, services, containers=None, containers_error=None):
-    """packages: host packages [(name, version, arch, source)]; containers: [{..., "packages": [...]}]."""
-    rows = [(n, v, a, src, None) for n, v, a, src in packages]
-    for ct in containers or []:
-        rows += [(n, v, a, src, ct["name"]) for n, v, a, src in ct.get("packages", [])]
+    """packages: host packages [(name, version, arch, source[, meta])]; containers: [{..., "packages": [...]}].
+    meta (version probes only): {"path", "owner", "variant"}."""
+    rows, metas = [], []
+    for container, items in [(None, packages)] + [(ct["name"], ct.get("packages", [])) for ct in containers or []]:
+        for p in items:
+            rows.append((*p[:4], container))
+            metas.append(p[4] if len(p) > 4 else {})
     old = {(r["name"], r["arch"], r["source"], r["container"]): r["version"]
            for r in db.q("SELECT name, version, arch, source, container FROM packages WHERE vm_id=?", (vm_id,))}
     new = {(n, a, src, ct): v for n, v, a, src, ct in rows}
@@ -393,17 +520,28 @@ def save(vm_id, started_at, info, packages, ports, services, containers=None, co
     count = sum(1 for p in packages if p[3] not in ("kernel", "probe"))
     with db.tx() as c:
         c.execute("DELETE FROM packages WHERE vm_id=?", (vm_id,))
-        vendors = info.get("vendors") or {}
-        c.executemany("INSERT INTO packages(vm_id, name, version, arch, source, container, vendor) VALUES(?,?,?,?,?,?,?)",
-                      [(vm_id, *r, vendors.get(r[0]) if r[4] is None and r[3] in ("rpm", "deb") else None)
-                       for r in rows])
+        # Who built each package and its source package (host and each container), for EOL and the CVE lookup
+        vendors = {None: info.get("vendors") or {}}
+        vendors.update({ct["name"]: ct.get("vendors") or {} for ct in containers or []})
+        sources = {None: info.get("sources") or {}}
+        sources.update({ct["name"]: ct.get("sources") or {} for ct in containers or []})
+        # Version probes: where each copy is and which package installed it ("" = installed by hand). Their
+        # vendor column holds who made the program when it says so (Oracle / OpenJDK, MySQL / MariaDB).
+        c.executemany("INSERT INTO packages(vm_id, name, version, arch, source, container, vendor, src_name, "
+                      "path, owner) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                      [(vm_id, *r,
+                        (vendors.get(r[4], {}).get(r[0]) if r[3] in ("rpm", "deb")
+                         else (m.get("variant") or None) if r[3] == "probe" else None),
+                        sources.get(r[4], {}).get(r[0]) if r[3] in ("rpm", "deb", "apk") else None,
+                        m.get("path"), m.get("owner"))
+                       for r, m in zip(rows, metas)])
         c.execute("DELETE FROM containers WHERE vm_id=?", (vm_id,))
         c.executemany("""INSERT INTO containers(vm_id, runtime, cid, name, image, state, status, ports, os_name,
-                         os_version, os_family, pkg_count, error) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                         os_version, os_family, pkg_count, error, os_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                       [(vm_id, ct["runtime"], ct["cid"], ct["name"], ct["image"], ct["state"], ct["status"],
                         ct["ports"], ct.get("os_name"), ct.get("os_version"), ct.get("os_family"),
                         len([p for p in ct.get("packages", []) if p[3] != "probe"]) if ct.get("packages") else None,
-                        ct.get("error")) for ct in containers or []])
+                        ct.get("error"), ct.get("os_id")) for ct in containers or []])
         c.execute("UPDATE vms SET container_count=?, containers_error=? WHERE id=?",
                   (len(containers) if containers is not None else None, containers_error, vm_id))
         c.execute("DELETE FROM ports WHERE vm_id=?", (vm_id,))

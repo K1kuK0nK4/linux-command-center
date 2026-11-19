@@ -38,6 +38,15 @@ on the servers: it connects over SSH, reads, and disconnects.
   inside (Alpine, Debian, UBI…), so a vulnerable OpenSSL inside an image does not go unnoticed.
 - **Version detection beyond packages.** Configurable probes (`nginx -v`, `java -version`, `openssl version`…)
   catch software installed by hand, in `/opt` or from tarballs.
+- **CVE lookup.** Type a CVE ID and see which servers and containers are vulnerable, patched or not affected,
+  using the fixed version published by Red Hat, Ubuntu, Debian and Alpine (backports included). Third-party
+  packages (nginx.org, Docker…) and software installed by hand, bundled in applications or compiled into
+  container images (PHP, Node, Java, Tomcat, OpenSSL libraries…) are checked against the software vendor's own
+  affected versions (CVE.org, NVD), with the path of each copy. Any program can be added as a probe with its
+  CPE product (e.g. `grafana:grafana`). Vulnerabilities
+  exploited in the wild (CISA KEV) are flagged, and the vendor's notes and mitigations are shown next to the
+  result, because conditions such as "only if the module is enabled" still need a manual check. Only the CVE ID is
+  sent to those public sources.
 - **End-of-life detection.** Operating systems and applications without security support are flagged using
   the public endoflife.date data. Applications are detected from the scanned packages, and the app tells apart
   what the distribution keeps patching from third-party packages (Docker, MySQL Community, NodeSource, EPEL…).
@@ -58,7 +67,7 @@ This tool holds credentials to other people's servers, so it is built defensivel
 
 | | |
 |---|---|
-| **Runs on your machine only** | The web UI is bound to `127.0.0.1`. No cloud, no telemetry. The only request to the Internet is a daily download of the public endoflife.date catalog: the same file for everyone, with nothing from your inventory in it. It can be turned off or sent through a proxy. |
+| **Runs on your machine only** | The web UI is bound to `127.0.0.1`. No cloud, no telemetry. Requests to the Internet only read public data: a daily download of the endoflife.date and CISA KEV catalogs (the same files for everyone) and, when you look up a CVE, the vendors' records for that CVE ID. Nothing from your inventory is sent. It can be turned off or sent through a proxy. |
 | **Nothing installed on servers** | Scans are read-only commands over SSH. The exact script is shown in the app (*Inventory → What does it do?*). |
 | **Credentials are not stored by default** | The app asks for them when it connects and, only if you tick *Remember*, keeps them in memory until you lock it. SSH keys are supported. Saving them is an explicit choice per server: if you do, they are encrypted with AES-256-GCM (key derived from your master password with scrypt), never leave your machine and can only be revealed after re-entering the master password. |
 | **Step-up authentication** | Opening a terminal, running remote commands, changing files over SSH or revealing a password asks for the master password again (valid for 5 minutes). |
@@ -136,24 +145,27 @@ docker compose up -d --build
 3. Press **Scan** and enter the server's credentials when asked. On first contact, confirm its SSH fingerprint.
 4. **Search** a package and version, e.g. `openssh-server` `<` `1:9.6p1-3ubuntu13.3` filtered by *Ubuntu*.
 
-> **Tip for CVEs:** distributions backport fixes without changing the upstream version. Always compare against the
-> *vendor's* fixed version (Red Hat, Ubuntu and Debian security trackers), one search per distribution.
+> **Tip for CVEs:** distributions backport fixes without changing the upstream version, so compare against the
+> *vendor's* fixed version, not the upstream one. **CVE lookup** does exactly that for you.
 
 ## What it runs on your servers
 
 The scan only uses read-only commands, without `sudo`: `cat /etc/os-release`, `uname`, `dpkg-query -W` / `rpm -qa`
-/ `apk info` (name, version and who built each package), `apt list --upgradable` / `dnf -C check-update` (local cache only, nothing is downloaded), `ss -tuln`,
+/ `apk info` (name, version, source package and who built each package), `apt list --upgradable` / `dnf -C check-update` (local cache only, nothing is downloaded), `ss -tuln`,
 `systemctl list-units`, the version probes you enable, and `docker`/`podman ps` plus a read-only `exec` for
-containers (with `sudo` only if Docker requires it, and recorded in the audit log).
+containers (with `sudo` only if Docker requires it, and recorded in the audit log). Probes look for every copy of
+each program (`PATH`, `/opt`, `/usr/local`…, a few levels deep) and ask `rpm -qf` / `dpkg -S` / `apk` which
+package installed it, so software installed by hand is told apart from the distribution's.
 
 On the server side it looks like a normal SSH login and a few commands. Make sure you are **authorised** to access
 every system you add.
 
 ## Roadmap
 
-- [ ] **CVE search.** Type a CVE ID and get the fixed version per distribution (Red Hat Security Data, Ubuntu CVE
+- [x] **CVE search.** Type a CVE ID and get the fixed version per distribution (Red Hat Security Data, Ubuntu CVE
       Tracker, OSV.dev) and the list of affected servers, with no static data inside the app.
-- [ ] **Actively exploited flag.** Highlight vulnerabilities listed in the CISA KEV catalog.
+- [x] **Actively exploited flag.** Highlight vulnerabilities listed in the CISA KEV catalog.
+- [ ] **Automatic KEV exposure.** Flag on its own every server exposed to an actively exploited vulnerability.
 - [x] **End-of-life detection.** Operating systems and applications without security support (endoflife.date),
       with automatic tags.
 - [ ] **AI-assisted triage.** Summarise an advisory and suggest the searches and remediation commands.
